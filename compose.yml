@@ -1,0 +1,20 @@
+name: sheetcraft
+
+
+services:
+  app:
+    image: sheetcraft:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    volumes:
+      - ./:/app
+    command: "bun run dev"
+    ports:
+      - "${FORWARD_FE_PORT:-3000}:5173"
+    environment:
+      FORWARD_FE_PORT: "${FORWARD_FE_PORT:-3000}"
+    restart: unless-stopped
+    init: true
