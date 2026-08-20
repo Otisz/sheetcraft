@@ -22,11 +22,32 @@ identically in derivation and character creation. Stored in parallel tables
 A namespaced string pointing at catalog or homebrew content: `catalog:human`, `homebrew:azureborn`.
 The prefix selects the table; the suffix is the entry's `index`.
 
+Parsed in exactly **one** place — `resolveRef(type, ref)`. Nothing else splits the string.
+
+Homebrew deletes are **blocked** while any character references the entry, so a homebrew ref never
+dangles. Catalog refs can still dangle after an upstream re-seed; those render as
+`⚠ unknown (<index>)` and derived values fall back to base rather than throwing.
+
 ## Character record
 
 One Dexie record holding both **character data** (name, class, level, abilities — changes rarely)
 and **play state** (current HP, expended slots, death saves, modifier toggles — changes constantly).
 They live together by design; see [#139](https://github.com/Otisz/sheetcraft/issues/139).
+
+## Input vs derived
+
+The character record stores **inputs only**. AC, max HP, proficiency bonus, ability modifiers,
+skill/save modifiers, spell save DC, initiative and slot maxima are **derived on every read** and
+never stored — a stored copy is a copy that can go stale.
+
+`abilities` holds **base** scores; racial bonuses and ASIs are modifier records targeting
+`ability.<abil>`, so every point is traceable to its source.
+
+## Hit point rolls (`hpRolls`)
+
+The one input that looks derived but isn't. At each level-up a 2014 player either rolls a hit die or
+takes the fixed average, so the roll is a genuine input. Stored as a **per-level array**, not a
+total: `maxHp = sum(hpRolls) + conMod * level`, which stays correct when CON changes.
 
 ## Modifier record
 
