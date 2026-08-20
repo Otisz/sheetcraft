@@ -11,6 +11,25 @@ Read-only game content vendored from [5e-bits/5e-database](https://github.com/5e
 (SRD, 2014). Served as static JSON from `public/` and cached in Dexie. Never fetched from a
 third-party API at runtime.
 
+## Catalog tier
+
+Which load phase a catalog belongs to, declared in the manifest as `tier: 1 | 2`.
+
+- **Tier 1 (21 KB gzipped)** — `classes`, `subclasses`, `races`, `subraces`. The minimal-creation
+  picker set. **Blocks** behind the sync gate; ~0.9s on weak venue wifi.
+- **Tier 2 (197 KB gzipped)** — everything else, including spells. Downloads in the background;
+  nothing ever waits on it.
+
+Not a `required` boolean — booleans are not indexable in Dexie, and the tier number carries more
+meaning.
+
+## Sync gate
+
+The provider on the `/dnd` layout route that blocks first paint until tier 1 is installed. Not a
+route loader — loaders are SWR-cached, re-run on navigation, and non-blocking past ~1000ms.
+
+Clears when the manifest version matches `dnd_meta.manifestVersion` and tier-1 tables are non-empty.
+
 ## Homebrew
 
 User-authored content conforming to the **same schema as a catalog entry**, so it behaves
