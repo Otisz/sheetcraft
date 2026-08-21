@@ -89,6 +89,22 @@ The one input that looks derived but isn't. At each level-up a 2014 player eithe
 takes the fixed average, so the roll is a genuine input. Stored as a **per-level array**, not a
 total: `maxHp = sum(hpRolls) + conMod * level`, which stays correct when CON changes.
 
+## Currency
+
+`play.currency: { cp, sp, ep, gp, pp }` — **play state, not character data**, because money changes
+every session. Declare the keys in ascending value (cp → pp): the sheet renders from
+`Object.entries`, so key order is display order.
+
+Identified as a gap in the record during [the sheet prototype](https://github.com/Otisz/sheetcraft/issues/150) —
+it was absent from the schema entirely.
+
+## Condition
+
+An SRD condition (Prone, Poisoned, …; 15 of them) tracked on a character as a **reminder only**.
+Conditions carry **no modifier record** — their real effects are advantage/disadvantage and movement,
+which Sheetcraft does not compute. The sheet renders them visually distinct from
+[Toggle](#toggle)-driven effects so the UI never implies arithmetic the app didn't do.
+
 ## Modifier record
 
 A typed, structured adjustment to one derivable value. The **only** mechanism by which a feature,

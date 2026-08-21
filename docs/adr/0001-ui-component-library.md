@@ -59,9 +59,14 @@ Anything pinned to the legacy path silently misses the Base UI migration.
 **We must build the HP control ourselves.** shadcn ships **no** number-field/stepper on any base
 (404 across every style — confirmed), though Base UI upstream has `NumberField`. We wrap it.
 
-The HP control is **steppers plus a heal/damage/temp mode selector** — no custom numeric keypad.
-`inputMode="numeric"` raises the OS keypad for large amounts, and the mode selector is what a paper
-sheet actually needs. This removes a bespoke keypad component from scope entirely.
+The HP control is **steppers plus a heal/damage/temp mode selector**.
+
+> **Amended 2026-08-21 after [the sheet prototype](https://github.com/Otisz/sheetcraft/issues/150).**
+> This ADR originally ruled out a custom numpad, relying on `inputMode="numeric"` to raise the OS
+> keypad. Driving the prototype on a phone reversed that: **both ship.** Steppers do ±1 inline; the
+> HP value is a button opening a numpad drawer for arbitrary amounts, whose
+> **Damage / Heal / Temp buttons are the commit — there is no Apply button.** The numpad is still a
+> component we build ourselves, as no surveyed library ships one.
 
 ```
         HP  23 / 41
