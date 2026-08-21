@@ -91,6 +91,25 @@ The one input that looks derived but isn't. At each level-up a 2014 player eithe
 takes the fixed average, so the roll is a genuine input. Stored as a **per-level array**, not a
 total: `maxHp = sum(hpRolls) + conMod * level`, which stays correct when CON changes.
 
+## Installed (Home Screen web app)
+
+Sheetcraft running from the iOS Home Screen in `display: standalone`. **The only documented
+exemption from WebKit's 7-day deletion of script-writable storage, IndexedDB included.**
+
+Requires a manifest with `display: standalone` plus an `apple-touch-icon` (which takes precedence
+over manifest icons on iOS). **No service worker** — not required by iOS or Chromium, and offline
+mode remains out of scope.
+
+Detected with `matchMedia('(display-mode: standalone)')`.
+
+**The migration trap:** installing does **not** copy IndexedDB — only cookies. A user who creates
+characters in a Safari tab and then installs lands in an empty app. Hence the install nudge fires
+**before** any character exists, and export/import is the only route across that boundary.
+
+`navigator.storage.persist()` is **not** the durability mechanism — the exemption is keyed to
+installed status. Being installed is a heuristic WebKit uses when *granting* persist(), not the
+reverse. Called opportunistically, never surfaced to the user.
+
 ## Backup file
 
 The export artifact — `sheetcraft-backup-<date>.json`. Self-contained: characters plus **only the
