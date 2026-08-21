@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "upstream": {
+    "repo": "5e-bits/5e-database",
+    "sha": "bfd3db4bcc31699cce703b46feb9af3f0ff08999",
+    "dir": "src/2014/en"
+  },
+  "license": {
+    "code": "MIT",
+    "content": "OGL-1.0a"
+  },
+  "catalogs": [
+    {
+      "id": "ability_scores",
+      "filename": "ability_scores.23f08ea89e30f3d4.json",
+      "bytes": 5372,
+      "tier": 2
+    },
+    {
+      "id": "backgrounds",
+      "filename": "backgrounds.f98c556f1b842c25.json",
+      "bytes": 11831,
+      "tier": 2
+    },
+    {
+      "id": "classes",
+      "filename": "classes.2c2795733d45db10.json",
+      "bytes": 150567,
+      "tier": 1
+    },
+    {
+      "id": "equipment",
+      "filename": "equipment.aa5e99e4dad50143.json",
+      "bytes": 177080,
+      "tier": 2
+    },
+    {
+      "id": "equipment_categories",
+      "filename": "equipment_categories.79ae72de3e73ac6a.json",
+      "bytes": 137652,
+      "tier": 2
+    },
+    {
+      "id": "features",
+      "filename": "features.fd20a2a5c27996eb.json",
+      "bytes": 355557,
+      "tier": 2
+    },
+    {
+      "id": "levels",
+      "filename": "levels.ea6a58268f26f853.json",
+      "bytes": 225478,
+      "tier": 1
+    },
+    {
+      "id": "proficiencies",
+      "filename": "proficiencies.60127a2130a5dd0a.json",
+      "bytes": 46680,
+      "tier": 2
+    },
+    {
+      "id": "races",
+      "filename": "races.75e6e99c318162e2.json",
+      "bytes": 26193,
+      "tier": 1
+    },
+    {
+      "id": "skills",
+      "filename": "skills.09f42a2d3e3d952f.json",
+      "bytes": 9566,
+      "tier": 2
+    },
+    {
+      "id": "spells",
+      "filename": "spells.6ba39de71c28b8fa.json",
+      "bytes": 607779,
+      "tier": 2
+    },
+    {
+      "id": "subclasses",
+      "filename": "subclasses.b3502390228ffd15.json",
+      "bytes": 54190,
+      "tier": 1
+    },
+    {
+      "id": "subraces",
+      "filename": "subraces.13f6917a7f52a42b.json",
+      "bytes": 3635,
+      "tier": 1
+    },
+    {
+      "id": "traits",
+      "filename": "traits.76943cc30d9d08ad.json",
+      "bytes": 55551,
+      "tier": 2
+    }
+  ]
+}

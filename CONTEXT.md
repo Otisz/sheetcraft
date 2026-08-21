@@ -25,6 +25,36 @@ Which load phase a catalog belongs to, declared in the manifest as `tier: 1 | 2`
 Not a `required` boolean — booleans are not indexable in Dexie, and the tier number carries more
 meaning.
 
+## Catalog manifest
+
+`public/srd/manifest.json` — what the vendoring pipeline emits and the sync gate reads. Produced by
+`scripts/vendor-srd.ts`, run **manually**, never on build.
+
+Carries a **single global `version`** for the whole set; the data files are content-hashed
+(`races.75e6e99c.json`) and therefore immutably cacheable, which makes per-file versions redundant.
+Each entry declares `id`, `filename`, `bytes` and [tier](#catalog-tier).
+
+Validated against its own zod schema before it is written, so an invalid manifest never reaches
+`public/`. Every field derives from the bytes and entries are ordered by id, so re-running the
+script against an unchanged pin produces **no diff**.
+
+## Upstream pin
+
+The upstream commit SHA the catalog was vendored from, recorded in the manifest and declared in
+`src/features/dnd/catalog/manifest.ts`.
+
+**Not optional.** The upstream zod schemas are `z.strictObject`, so a field added upstream
+**hard-fails** validation rather than degrading. Floating on a branch would turn an upstream commit
+into a broken app. Content and schemas move together: re-pinning means re-running the vendor script
+*and* re-copying the vendored schemas.
+
+Those schemas are **vendored as source** under `src/features/dnd/catalog/schemas/`, not depended
+on — upstream marks the package `"private": true` and never publishes it. Types are **inferred from
+them**, never hand-written alongside, so a hand-written type cannot drift from the validator.
+
+Vendored content carries **MIT** (the code) plus **OGL 1.0a** (the SRD material) attribution; see
+`public/srd/ATTRIBUTION.md`.
+
 ## Sync gate
 
 The provider on the `/dnd` layout route that blocks first paint until tier 1 is installed. Not a

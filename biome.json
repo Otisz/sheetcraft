@@ -8,7 +8,14 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**/src/**/*", "**/index.html", "**/vite.config.ts", "**/vitest.config.ts", "!**/src/routeTree.gen.ts"]
+    "includes": [
+      "**/src/**/*",
+      "**/index.html",
+      "**/vite.config.ts",
+      "**/vitest.config.ts",
+      "**/scripts/**/*.ts",
+      "!**/src/routeTree.gen.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -54,6 +61,25 @@
           "suspicious": "off",
           "style": "off",
           "a11y": "off"
+        }
+      },
+      "formatter": {
+        "enabled": false
+      },
+      "assist": {
+        "actions": {
+          "source": {
+            "organizeImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/src/features/dnd/catalog/schemas/*.ts", "!**/src/features/dnd/catalog/schemas/index.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": "off",
+          "style": "off"
         }
       },
       "formatter": {
