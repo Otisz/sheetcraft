@@ -10,33 +10,61 @@
 
 import { Route as rootRouteImport } from "./routes/__root";
 import { Route as IndexRouteImport } from "./routes/index";
+import { Route as DndRouteRouteImport } from "./routes/dnd/route";
+import { Route as GamesRouteImport } from "./routes/games";
+import { Route as DndIndexRouteImport } from "./routes/dnd/index";
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
   getParentRoute: () => rootRouteImport,
 } as any);
+const DndRouteRoute = DndRouteRouteImport.update({
+  id: "/dnd",
+  path: "/dnd",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const GamesRoute = GamesRouteImport.update({
+  id: "/games",
+  path: "/games",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DndIndexRoute = DndIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => DndRouteRoute,
+} as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/dnd": typeof DndRouteRouteWithChildren;
+  "/games": typeof GamesRoute;
+  "/dnd/": typeof DndIndexRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/games": typeof GamesRoute;
+  "/dnd": typeof DndIndexRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/dnd": typeof DndRouteRouteWithChildren;
+  "/games": typeof GamesRoute;
+  "/dnd/": typeof DndIndexRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/";
+  fullPaths: "/" | "/dnd" | "/games" | "/dnd/";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/";
-  id: "__root__" | "/";
+  to: "/" | "/games" | "/dnd";
+  id: "__root__" | "/" | "/dnd" | "/games" | "/dnd/";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  DndRouteRoute: typeof DndRouteRouteWithChildren;
+  GamesRoute: typeof GamesRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -48,11 +76,46 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/dnd": {
+      id: "/dnd";
+      path: "/dnd";
+      fullPath: "/dnd";
+      preLoaderRoute: typeof DndRouteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/games": {
+      id: "/games";
+      path: "/games";
+      fullPath: "/games";
+      preLoaderRoute: typeof GamesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/dnd/": {
+      id: "/dnd/";
+      path: "/";
+      fullPath: "/dnd/";
+      preLoaderRoute: typeof DndIndexRouteImport;
+      parentRoute: typeof DndRouteRoute;
+    };
   }
 }
 
+interface DndRouteRouteChildren {
+  DndIndexRoute: typeof DndIndexRoute;
+}
+
+const DndRouteRouteChildren: DndRouteRouteChildren = {
+  DndIndexRoute: DndIndexRoute,
+};
+
+const DndRouteRouteWithChildren = DndRouteRoute._addFileChildren(
+  DndRouteRouteChildren,
+);
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DndRouteRoute: DndRouteRouteWithChildren,
+  GamesRoute: GamesRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
