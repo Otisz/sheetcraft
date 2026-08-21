@@ -231,3 +231,8 @@ record instead, because SRD features are prose-only.
 A player-supplied value replacing a derived one. Stored as a modifier record with
 `source: 'override', op: 'set'` — **not** a separate field. One mechanism, one explanation path;
 clearing an override means deleting the record.
+
+The `op: 'set'` half is **enforced**, not merely conventional: an override carrying any other op is
+a validation error, because resolution would treat it as a `set` regardless and honouring something
+the record does not say is how a sheet starts lying. Several overrides on one target resolve
+last-wins — a second override is the player changing their mind.

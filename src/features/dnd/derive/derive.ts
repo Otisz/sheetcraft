@@ -69,6 +69,12 @@ function validate(modifiers: Modifier[]): void {
     if (typeof modifier.value === "object" && !isReference(modifier.value.ref)) {
       throw new ModifierValidationError(modifier, `unknown reference "${modifier.value.ref}"`);
     }
+    // An override replaces the value outright, so any op but `set` is a
+    // contradiction. Resolution would treat it as a set regardless; better to
+    // reject it than to honour something the record does not say.
+    if (modifier.source === "override" && modifier.op !== "set") {
+      throw new ModifierValidationError(modifier, `an override must use op "set", not "${modifier.op}"`);
+    }
   }
 }
 
@@ -107,7 +113,10 @@ function forTarget(modifiers: Modifier[], target: Target, scope: ReferenceScope)
 
 /**
  * The floor on max HP. A level 1 roll of 1 with CON 3 computes to -3, which is
- * not a hit point total any table would accept.
+ * not a hit point total any table would accept. The 2014 rules do not state
+ * this minimum, so it is Sheetcraft's, not the SRD's — applied as a visible
+ * trace step rather than a silent clamp, so `explain` never reports a value
+ * its own steps do not produce.
  */
 const MIN_MAX_HP = 1;
 
@@ -154,23 +163,43 @@ export function derive(character: CharacterRecord): Derived {
   // Per-level rolls, not a stored total, so a CON change recomputes correctly.
   // See CONTEXT.md § Hit point rolls.
   const baseMaxHp = sum(character.hpRolls) + abilityModifiers.con * level;
-  const maxHpTrace = resolve(baseMaxHp, forTarget(modifiers, "maxHp", scope));
-  const maxHp = Math.max(MIN_MAX_HP, maxHpTrace.value);
+  const maxHpTrace = withFloor(
+    resolve(baseMaxHp, forTarget(modifiers, "maxHp", scope)),
+    MIN_MAX_HP,
+    "Hit points cannot drop below 1",
+  );
 
   return {
     abilityScores: scores,
     abilityModifiers,
     proficiencyBonus: proficiencyTrace.value,
-    maxHp,
+    maxHp: maxHpTrace.value,
     explain(target) {
       if (target === "maxHp") {
-        return { ...maxHpTrace, value: maxHp };
+        return maxHpTrace;
       }
       if (target === "proficiencyBonus") {
         return proficiencyTrace;
       }
       return scoreTraces[target.slice("ability.".length) as Abil];
     },
+  };
+}
+
+/**
+ * Raises a trace to a floor, recording the raise as a step. A clamp applied
+ * outside the trace would leave `explain` reporting a value its steps do not
+ * sum to — which is the one thing provenance exists to prevent.
+ */
+function withFloor(trace: Trace, floor: number, label: string): Trace {
+  if (trace.value >= floor) {
+    return trace;
+  }
+
+  return {
+    ...trace,
+    value: floor,
+    steps: [...trace.steps, { id: "floor", source: "rule", label, op: "min", amount: floor, value: floor }],
   };
 }
 

@@ -133,9 +133,26 @@ describe("max HP", () => {
 
   it("never falls below 1, however punishing the CON", () => {
     // A dwarf-less level 1 with a roll of 1 and CON 3 (-4) would be -3.
+    // Sheetcraft's floor, not the SRD's — the 2014 rules state no minimum.
     const character = makeCharacter({ level: 1, hpRolls: [1], abilities: abilities({ con: 3 }) });
 
     expect(derive(character).maxHp).toBe(1);
+  });
+
+  it("shows the floor as a trace step, so the steps still explain the value", () => {
+    const character = makeCharacter({ level: 1, hpRolls: [1], abilities: abilities({ con: 3 }) });
+
+    const trace = derive(character).explain("maxHp");
+
+    expect(trace.value).toBe(1);
+    expect(trace.base).toBe(-3);
+    expect(trace.steps.at(-1)).toMatchObject({ source: "rule", amount: 1, value: 1 });
+  });
+
+  it("leaves the trace alone when the floor does not bite", () => {
+    const character = makeCharacter({ level: 1, hpRolls: [10], abilities: abilities({ con: 14 }) });
+
+    expect(derive(character).explain("maxHp").steps).toEqual([]);
   });
 
   it("accepts a modifier from a feature like Tough or Draconic Resilience", () => {
@@ -248,6 +265,15 @@ describe("override", () => {
     expect(derive(makeCharacter({ modifiers: [other, override] })).maxHp).toBe(7);
   });
 
+  it("rejects an override that is not a set, rather than quietly treating it as one", () => {
+    // CONTEXT.md § Override defines an override as `source:'override', op:'set'`.
+    const character = makeCharacter({
+      modifiers: [makeModifier({ id: "bad-override", target: "maxHp", op: "add", value: 5, source: "override" })],
+    });
+
+    expect(() => derive(character)).toThrow(/override must use op "set"/);
+  });
+
   it("is ignored when toggled off, leaving the derived value", () => {
     const character = makeCharacter({
       modifiers: [makeModifier({ target: "maxHp", op: "set", value: 7, source: "override", enabled: false })],
@@ -346,8 +372,6 @@ describe("validation", () => {
       modifiers: [
         makeModifier({ target: "ac" }),
         makeModifier({ target: "maxHp" }),
-        makeModifier({ target: "initiative" }),
-        makeModifier({ target: "speed" }),
         makeModifier({ target: "proficiencyBonus" }),
         makeModifier({ target: "passivePerception" }),
         makeModifier({ target: "spell.saveDc" }),

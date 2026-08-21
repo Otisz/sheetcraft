@@ -39,8 +39,6 @@ export type Skill = keyof typeof SKILLS;
 export const SCALAR_TARGETS = {
   ac: true,
   maxHp: true,
-  initiative: true,
-  speed: true,
   proficiencyBonus: true,
   passivePerception: true,
   "spell.saveDc": true,

@@ -39,8 +39,6 @@ describe("isTarget", () => {
   it.each([
     "ac",
     "maxHp",
-    "initiative",
-    "speed",
     "proficiencyBonus",
     "passivePerception",
     "spell.saveDc",
@@ -58,6 +56,10 @@ describe("isTarget", () => {
     "",
     "AC",
     "hp",
+    // No ticket derives these yet. The vocabulary stays closed to what the
+    // engine actually computes, so an unimplemented target fails loudly.
+    "initiative",
+    "speed",
     "ability.luck",
     "ability.",
     "save.STR",
