@@ -242,8 +242,11 @@ Two SRD traps, both confirmed against the vendored data:
 
 A proficient skill or save adds the proficiency bonus to the **base**, not as a step: it is not a
 modifier record, and inventing one would put an entry in the trace that nothing in the character's
-data corresponds to. **Expertise** is a second helping of the same bonus — `op:'add'` with
-`value:{ref:'proficiencyBonus'}`, never a special doubling operation.
+data corresponds to.
+
+**Expertise** is the opposite case — it *is* a record: an `add` of `{ref:'proficiencyBonus'}`, never
+a special doubling operation. So it appears in the trace as its own step, which is what lets the
+sheet answer "why is my Stealth 7?", and it moves when the bonus does.
 
 Passive perception is `10 + the perception check modifier`, so anything moving the check has
 already moved the passive score; `passivePerception` records land on top of it.
@@ -253,10 +256,14 @@ Spell save DC (`8 + proficiency + ability`) and spell attack bonus (`proficiency
 
 ## Derive context
 
-The resolved catalog data one derivation needs: the equipped armor entries and the class's
-spellcasting ability. Both are *structural* SRD data, and [derivation](#derivation) is pure, so they
-arrive as a second argument to `derive(character, context)` that the caller resolves through
-`resolveRef` — keeping ref parsing in the one place it lives.
+The resolved catalog data one derivation needs: the equipped armor entries, the skill and expertise
+proficiencies, and the class's spellcasting ability. All are *structural* SRD data, and
+[derivation](#derivation) is pure, so they arrive as a second argument to `derive(character, context)`
+that the caller resolves through `resolveRef` — keeping ref parsing in the one place it lives.
+
+Skill proficiencies arrive as resolved `Skill` values, not as the `catalog:` refs the record stores.
+Matching refs inside the engine would encode the ref grammar a second time, which is the duplication
+[catalog reference](#catalog-reference) exists to forbid.
 
 **Required, never defaulted.** A context that defaulted to empty would silently derive AC 10 for an
 armored character, which is a wrong number with no way to notice.

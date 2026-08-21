@@ -11,13 +11,14 @@
  * because SRD features are prose-only. See CONTEXT.md § Base formula.
  */
 import type { Abil } from "@/features/dnd/db/schema";
+import type { Skill } from "@/features/dnd/derive/targets";
 
 /**
  * One armor entry's AC block, exactly as the SRD stores it.
  *
  * `maxBonus` is optional rather than nullable because upstream **omits the key**
  * on unlimited-dex light armor rather than setting it to null — absent means
- * uncapped, and reading it as 0 would cost a rogue three points of AC.
+ * uncapped, and reading it as 0 would cost a rogue four points of AC.
  */
 export type ArmorClassData = {
   base: number;
@@ -46,6 +47,15 @@ export type DeriveContext = {
   /** Every equipped armor entry, shields included. Order is irrelevant. */
   armor: EquippedArmor[];
   /**
+   * The skills the character is proficient in, already resolved from the
+   * `catalog:` refs on the record. Resolved by the caller rather than matched
+   * here so ref parsing stays in `resolveRef` — the engine never encodes the
+   * ref grammar a second time.
+   */
+  skillProficiencies: Skill[];
+  /** The skills the character has expertise in, resolved the same way. */
+  expertise: Skill[];
+  /**
    * The class's spellcasting ability, or `null` for a non-caster. Structural in
    * the SRD (`classes[].spellcasting.spellcasting_ability`), so it is read, not
    * hardcoded.
@@ -53,5 +63,17 @@ export type DeriveContext = {
   spellcastingAbility: Abil | null;
 };
 
-/** A context for a character with nothing equipped and no spellcasting. */
-export const EMPTY_CONTEXT: DeriveContext = { armor: [], spellcastingAbility: null };
+/**
+ * A context for a character with nothing equipped, no skill proficiencies and
+ * no spellcasting.
+ *
+ * Exported for tests and for callers building one up field by field — **not** a
+ * default. `derive` takes its context as a required argument, because a context
+ * that defaulted to this would silently derive AC 10 for an armored character.
+ */
+export const EMPTY_CONTEXT: DeriveContext = {
+  armor: [],
+  skillProficiencies: [],
+  expertise: [],
+  spellcastingAbility: null,
+};

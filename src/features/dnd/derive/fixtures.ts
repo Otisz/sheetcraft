@@ -6,7 +6,8 @@
  * Typed literals rather than JSON so a schema change breaks compilation.
  */
 import type { Abil, CharacterRecord, Modifier } from "@/features/dnd/db/schema";
-import type { EquippedArmor } from "@/features/dnd/derive/context";
+import type { DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
+import type { Skill } from "@/features/dnd/derive/targets";
 
 /** A character with every field at a neutral value, for tests to spread over. */
 export function makeCharacter(overrides: Partial<CharacterRecord> = {}): CharacterRecord {
@@ -87,3 +88,13 @@ export const ARMOR = {
   chainMail: makeArmor({ index: "chain-mail", name: "Chain Mail", base: 16, dexBonus: false }),
   shield: makeArmor({ index: "shield", name: "Shield", base: 2, dexBonus: false, isShield: true }),
 } as const;
+
+/** A derive context, defaulting to nothing equipped and no proficiencies. */
+export function makeContext(overrides: Partial<DeriveContext> = {}): DeriveContext {
+  return { armor: [], skillProficiencies: [], expertise: [], spellcastingAbility: null, ...overrides };
+}
+
+/** A context for a character proficient in the given skills. */
+export function proficientIn(...skills: Skill[]): DeriveContext {
+  return makeContext({ skillProficiencies: skills });
+}

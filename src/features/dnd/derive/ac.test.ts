@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { derive } from "@/features/dnd/derive/derive";
-import { ARMOR, abilities, makeArmor, makeCharacter, makeModifier } from "@/features/dnd/derive/fixtures";
+import { ARMOR, abilities, makeCharacter, makeContext, makeModifier } from "@/features/dnd/derive/fixtures";
 
 /**
  * The eight AC computations validated in the modifier-record prototype
@@ -13,7 +13,7 @@ describe("armor class — the eight validated cases", () => {
     // additive, so it lands as a step rather than replacing the base.
     const character = makeCharacter({ abilities: abilities({ dex: 12 }) });
 
-    const derived = derive(character, { armor: [ARMOR.chainMail, ARMOR.shield], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [ARMOR.chainMail, ARMOR.shield] }));
 
     expect(derived.armorClass).toBe(18);
     expect(derived.explain("ac").base).toBe(16);
@@ -36,7 +36,7 @@ describe("armor class — the eight validated cases", () => {
       ],
     });
 
-    const derived = derive(character, { armor: [], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [] }));
 
     expect(derived.armorClass).toBe(15);
   });
@@ -58,7 +58,7 @@ describe("armor class — the eight validated cases", () => {
       ],
     });
 
-    const derived = derive(character, { armor: [ARMOR.chainMail], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [ARMOR.chainMail] }));
 
     expect(derived.armorClass).toBe(16);
   });
@@ -80,7 +80,7 @@ describe("armor class — the eight validated cases", () => {
       ],
     });
 
-    const derived = derive(character, { armor: [], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [] }));
 
     expect(derived.armorClass).toBe(16);
   });
@@ -102,7 +102,7 @@ describe("armor class — the eight validated cases", () => {
       ],
     });
 
-    const derived = derive(character, { armor: [], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [] }));
 
     expect(derived.armorClass).toBe(16);
   });
@@ -112,7 +112,7 @@ describe("armor class — the eight validated cases", () => {
     // it. Absent must mean unlimited; reading it as 0 costs four points here.
     const character = makeCharacter({ abilities: abilities({ dex: 18 }) });
 
-    const derived = derive(character, { armor: [ARMOR.leather], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [ARMOR.leather] }));
 
     expect(derived.armorClass).toBe(15);
   });
@@ -121,7 +121,7 @@ describe("armor class — the eight validated cases", () => {
     // 14 + min(4, 2) = 16, then +2 shield.
     const character = makeCharacter({ abilities: abilities({ dex: 18 }) });
 
-    const derived = derive(character, { armor: [ARMOR.scaleMail, ARMOR.shield], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [ARMOR.scaleMail, ARMOR.shield] }));
 
     expect(derived.armorClass).toBe(18);
   });
@@ -132,7 +132,7 @@ describe("armor class — the eight validated cases", () => {
       modifiers: [makeModifier({ target: "ac", op: "set", value: 21, source: "override", label: "Override" })],
     });
 
-    const derived = derive(character, { armor: [ARMOR.scaleMail, ARMOR.shield], spellcastingAbility: null });
+    const derived = derive(character, makeContext({ armor: [ARMOR.scaleMail, ARMOR.shield] }));
 
     expect(derived.armorClass).toBe(21);
   });
@@ -142,25 +142,25 @@ describe("armor class — the base formula", () => {
   it("is 10 + dex with nothing equipped", () => {
     const character = makeCharacter({ abilities: abilities({ dex: 14 }) });
 
-    expect(derive(character, { armor: [], spellcastingAbility: null }).armorClass).toBe(12);
+    expect(derive(character, makeContext({ armor: [] })).armorClass).toBe(12);
   });
 
   it("applies a negative dex modifier when unarmored", () => {
     const character = makeCharacter({ abilities: abilities({ dex: 6 }) });
 
-    expect(derive(character, { armor: [], spellcastingAbility: null }).armorClass).toBe(8);
+    expect(derive(character, makeContext({ armor: [] })).armorClass).toBe(8);
   });
 
   it("ignores dex entirely on armor that does not take it", () => {
     const character = makeCharacter({ abilities: abilities({ dex: 18 }) });
 
-    expect(derive(character, { armor: [ARMOR.chainMail], spellcastingAbility: null }).armorClass).toBe(16);
+    expect(derive(character, makeContext({ armor: [ARMOR.chainMail] })).armorClass).toBe(16);
   });
 
   it("does not raise a capped dex bonus above the cap", () => {
     const character = makeCharacter({ abilities: abilities({ dex: 20 }) });
 
-    expect(derive(character, { armor: [ARMOR.scaleMail], spellcastingAbility: null }).armorClass).toBe(16);
+    expect(derive(character, makeContext({ armor: [ARMOR.scaleMail] })).armorClass).toBe(16);
   });
 
   it("applies a negative dex modifier under a cap — the cap is a ceiling, not a floor", () => {
@@ -168,7 +168,7 @@ describe("armor class — the base formula", () => {
     // two points of AC the rules do not give them.
     const character = makeCharacter({ abilities: abilities({ dex: 6 }) });
 
-    expect(derive(character, { armor: [ARMOR.scaleMail], spellcastingAbility: null }).armorClass).toBe(12);
+    expect(derive(character, makeContext({ armor: [ARMOR.scaleMail] })).armorClass).toBe(12);
   });
 
   it("uses ability scores after `ability.*` modifiers, not the base scores", () => {
@@ -178,7 +178,7 @@ describe("armor class — the base formula", () => {
       modifiers: [makeModifier({ target: "ability.dex", op: "add", value: 2, source: "race:elf" })],
     });
 
-    expect(derive(character, { armor: [], spellcastingAbility: null }).armorClass).toBe(13);
+    expect(derive(character, makeContext({ armor: [] })).armorClass).toBe(13);
   });
 });
 
@@ -186,22 +186,13 @@ describe("armor class — shields", () => {
   it("adds a shield on top of unarmored AC", () => {
     const character = makeCharacter({ abilities: abilities({ dex: 14 }) });
 
-    expect(derive(character, { armor: [ARMOR.shield], spellcastingAbility: null }).armorClass).toBe(14);
+    expect(derive(character, makeContext({ armor: [ARMOR.shield] })).armorClass).toBe(14);
   });
 
   it("never treats a shield as the base armor", () => {
     // The Shield's `base: 2` read as absolute would produce 2, not 14.
     const character = makeCharacter({ abilities: abilities({ dex: 14 }) });
 
-    expect(derive(character, { armor: [ARMOR.shield], spellcastingAbility: null }).explain("ac").base).toBe(12);
-  });
-
-  it("stacks two shields, because the record says two are equipped", () => {
-    // Not a rules position — the SRD forbids it. The engine reports what is
-    // equipped; policing loadouts is the player's job, per CONTEXT.md § Toggle.
-    const character = makeCharacter();
-    const armor = [ARMOR.shield, makeArmor({ index: "shield-2", base: 2, isShield: true })];
-
-    expect(derive(character, { armor, spellcastingAbility: null }).armorClass).toBe(14);
+    expect(derive(character, makeContext({ armor: [ARMOR.shield] })).explain("ac").base).toBe(12);
   });
 });

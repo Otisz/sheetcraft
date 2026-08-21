@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Abil } from "@/features/dnd/db/schema";
 import { EMPTY_CONTEXT } from "@/features/dnd/derive/context";
 import { derive } from "@/features/dnd/derive/derive";
-import { abilities, makeCharacter, makeModifier } from "@/features/dnd/derive/fixtures";
+import { abilities, makeCharacter, makeContext, makeModifier, proficientIn } from "@/features/dnd/derive/fixtures";
 import { SKILLS, type Skill } from "@/features/dnd/derive/targets";
 
 describe("skill modifiers", () => {
@@ -20,18 +20,9 @@ describe("skill modifiers", () => {
     // Level 1, so the proficiency bonus is +2: 3 + 2 = 5.
     const character = makeCharacter({
       abilities: abilities({ [abil]: 16 }),
-      proficiencies: {
-        skills: [`catalog:${skill}`],
-        expertise: [],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    expect(derive(character, EMPTY_CONTEXT).skills[skill]).toBe(5);
+    expect(derive(character, proficientIn(skill)).skills[skill]).toBe(5);
   });
 
   it("derives all 18 skills", () => {
@@ -41,18 +32,9 @@ describe("skill modifiers", () => {
   it("leaves the other skills of a governing ability untouched by proficiency in one", () => {
     const character = makeCharacter({
       abilities: abilities({ dex: 16 }),
-      proficiencies: {
-        skills: ["catalog:stealth"],
-        expertise: [],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    const { skills } = derive(character, EMPTY_CONTEXT);
+    const { skills } = derive(character, proficientIn("stealth"));
 
     expect(skills.stealth).toBe(5);
     expect(skills.acrobatics).toBe(3);
@@ -64,18 +46,9 @@ describe("skill modifiers", () => {
       level: 9,
       hpRolls: Array(9).fill(6),
       abilities: abilities({ dex: 16 }),
-      proficiencies: {
-        skills: ["catalog:stealth"],
-        expertise: [],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    expect(derive(character, EMPTY_CONTEXT).skills.stealth).toBe(7);
+    expect(derive(character, proficientIn("stealth")).skills.stealth).toBe(7);
   });
 
   it("applies a modifier targeting one skill", () => {
@@ -101,21 +74,12 @@ describe("skill modifiers", () => {
   it("explains a skill", () => {
     const character = makeCharacter({
       abilities: abilities({ dex: 16 }),
-      proficiencies: {
-        skills: ["catalog:stealth"],
-        expertise: [],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
     // The proficiency is part of the base, not a step: it is not a modifier
     // record, and inventing one would put a record in the trace that nothing
     // in the character's data corresponds to.
-    expect(derive(character, EMPTY_CONTEXT).explain("skill.stealth").base).toBe(5);
+    expect(derive(character, proficientIn("stealth")).explain("skill.stealth").base).toBe(5);
   });
 });
 
@@ -125,18 +89,11 @@ describe("expertise", () => {
     // special doubling operation. DEX 16 (+3) + 2 proficiency + 2 again = 7.
     const character = makeCharacter({
       abilities: abilities({ dex: 16 }),
-      proficiencies: {
-        skills: ["catalog:stealth"],
-        expertise: ["catalog:stealth"],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    expect(derive(character, EMPTY_CONTEXT).skills.stealth).toBe(7);
+    expect(
+      derive(character, makeContext({ skillProficiencies: ["stealth"], expertise: ["stealth"] })).skills.stealth,
+    ).toBe(7);
   });
 
   it("scales with level, because it is a reference and not a frozen number", () => {
@@ -145,18 +102,11 @@ describe("expertise", () => {
       level: 17,
       hpRolls: Array(17).fill(6),
       abilities: abilities({ dex: 16 }),
-      proficiencies: {
-        skills: ["catalog:stealth"],
-        expertise: ["catalog:stealth"],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    expect(derive(character, EMPTY_CONTEXT).skills.stealth).toBe(15);
+    expect(
+      derive(character, makeContext({ skillProficiencies: ["stealth"], expertise: ["stealth"] })).skills.stealth,
+    ).toBe(15);
   });
 
   it("grants proficiency alongside expertise even if only expertise is listed", () => {
@@ -165,18 +115,23 @@ describe("expertise", () => {
     // still derives the number the player expects.
     const character = makeCharacter({
       abilities: abilities({ dex: 16 }),
-      proficiencies: {
-        skills: [],
-        expertise: ["catalog:stealth"],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    expect(derive(character, EMPTY_CONTEXT).skills.stealth).toBe(7);
+    expect(derive(character, makeContext({ expertise: ["stealth"] })).skills.stealth).toBe(7);
+  });
+
+  it("appears in the trace as a reference modifier, not as an invisible doubling", () => {
+    // The mechanism matters as much as the number: the sheet must be able to
+    // show *why* stealth is 7, and a doubling folded into the base is a step
+    // the player cannot see.
+    const character = makeCharacter({ abilities: abilities({ dex: 16 }) });
+
+    const trace = derive(character, makeContext({ expertise: ["stealth"] })).explain("skill.stealth");
+
+    expect(trace.base).toBe(5);
+    expect(trace.steps).toEqual([
+      { id: "expertise:stealth", source: "feature:expertise", label: "Expertise", op: "add", amount: 2, value: 7 },
+    ]);
   });
 });
 
@@ -249,18 +204,9 @@ describe("passive perception", () => {
   it("includes proficiency in perception", () => {
     const character = makeCharacter({
       abilities: abilities({ wis: 14 }),
-      proficiencies: {
-        skills: ["catalog:perception"],
-        expertise: [],
-        saves: [],
-        armor: [],
-        weapons: [],
-        tools: [],
-        languages: [],
-      },
     });
 
-    expect(derive(character, EMPTY_CONTEXT).passivePerception).toBe(14);
+    expect(derive(character, proficientIn("perception")).passivePerception).toBe(14);
   });
 
   it("includes a modifier targeting the perception skill, because the score follows the skill", () => {
@@ -303,13 +249,13 @@ describe("spellcasting", () => {
     // PHB p.205. A level 1 Wizard with INT 16: 8 + 2 + 3 = 13.
     const character = makeCharacter({ classRef: "catalog:wizard", abilities: abilities({ int: 16 }) });
 
-    expect(derive(character, { armor: [], spellcastingAbility: "int" }).spellSaveDc).toBe(13);
+    expect(derive(character, makeContext({ spellcastingAbility: "int" })).spellSaveDc).toBe(13);
   });
 
   it("derives the spell attack bonus as proficiency + the spellcasting ability modifier", () => {
     const character = makeCharacter({ classRef: "catalog:wizard", abilities: abilities({ int: 16 }) });
 
-    expect(derive(character, { armor: [], spellcastingAbility: "int" }).spellAttackBonus).toBe(5);
+    expect(derive(character, makeContext({ spellcastingAbility: "int" })).spellAttackBonus).toBe(5);
   });
 
   it("reads the ability from the class rather than assuming one", () => {
@@ -321,7 +267,7 @@ describe("spellcasting", () => {
       abilities: abilities({ wis: 18, int: 8 }),
     });
 
-    const derived = derive(character, { armor: [], spellcastingAbility: "wis" });
+    const derived = derive(character, makeContext({ spellcastingAbility: "wis" }));
 
     expect(derived.spellSaveDc).toBe(15);
     expect(derived.spellAttackBonus).toBe(7);
@@ -351,7 +297,7 @@ describe("spellcasting", () => {
       ],
     });
 
-    expect(derive(character, { armor: [], spellcastingAbility: "int" }).spellSaveDc).toBe(14);
+    expect(derive(character, makeContext({ spellcastingAbility: "int" })).spellSaveDc).toBe(14);
   });
 
   it("ignores spell modifiers for a non-caster instead of inventing a value", () => {

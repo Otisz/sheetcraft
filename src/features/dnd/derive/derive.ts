@@ -13,7 +13,7 @@
  * max_bonus}`, the class's spellcasting ability — arrives as a `DeriveContext`
  * the caller resolves, because the engine cannot reach Dexie and stay pure.
  */
-import { ABILITIES, type Abil, type CharacterRecord, type Modifier, type Ref } from "@/features/dnd/db/schema";
+import { ABILITIES, type Abil, type CharacterRecord, type Modifier } from "@/features/dnd/db/schema";
 import type { DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
 import { type ResolvedModifier, resolve, type Trace } from "@/features/dnd/derive/resolve";
 import { isReference, isTarget, type Reference, SKILLS, type Skill, type Target } from "@/features/dnd/derive/targets";
@@ -104,18 +104,6 @@ const PASSIVE_BASE = 10;
 
 /** PHB p.205: `8 + proficiency + the spellcasting ability modifier`. */
 const SPELL_SAVE_DC_BASE = 8;
-
-/**
- * Whether a proficiency list names this skill.
- *
- * Compares against the refs a skill *can* be named by rather than splitting
- * the stored string — ref parsing lives in exactly one place, and that place is
- * `resolveRef`, which the engine cannot reach. The 18 skills are a closed
- * vocabulary, so enumerating the two possible refs is exhaustive.
- */
-function listsSkill(refs: Ref[], skill: Skill): boolean {
-  return refs.includes(`catalog:${skill}`) || refs.includes(`homebrew:${skill}`);
-}
 
 /**
  * Validates every modifier on the character, enabled or not.
@@ -238,8 +226,10 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
   const bodyArmor = context.armor.find((piece) => !piece.isShield);
   const shields: ResolvedModifier[] = context.armor
     .filter((piece) => piece.isShield)
-    .map((piece) => ({
-      id: `equip:${piece.index}`,
+    .map((piece, index) => ({
+      // The index disambiguates: `source` names what the modifier came from,
+      // `id` must identify this one record even if the same item appears twice.
+      id: `equip:${piece.index}:${index}`,
       source: `equip:${piece.index}`,
       target: "ac",
       op: "add" as const,
@@ -268,16 +258,32 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
   const skillTraces = {} as Record<Skill, Trace>;
   const skills = {} as Record<Skill, number>;
   for (const skill of Object.keys(SKILLS) as Skill[]) {
-    // Expertise is a doubled proficiency bonus (PHB p.96) — expressed as a
-    // second helping of the same bonus, not as a special doubling op. A
-    // character listed for expertise is proficient by definition, so expertise
-    // alone still counts once for proficiency.
-    const expert = listsSkill(character.proficiencies.expertise, skill);
-    const proficient = expert || listsSkill(character.proficiencies.skills, skill);
-    const helpings = (proficient ? 1 : 0) + (expert ? 1 : 0);
+    // A character listed for expertise is proficient by definition, so
+    // expertise alone still counts once for proficiency.
+    const expert = context.expertise.includes(skill);
+    const proficient = expert || context.skillProficiencies.includes(skill);
 
-    const base = abilityModifiers[SKILLS[skill]] + proficiencyTrace.value * helpings;
-    const trace = resolve(base, forTarget(modifiers, `skill.${skill}`, scope));
+    const base = abilityModifiers[SKILLS[skill]] + (proficient ? proficiencyTrace.value : 0);
+
+    // Expertise doubles the proficiency bonus (PHB p.96) as a *second helping
+    // of the same bonus* — an `add` of `{ref:'proficiencyBonus'}`, never a
+    // special doubling op. Because it is a record it appears in the trace, and
+    // because it is a reference it moves when the bonus does.
+    const expertiseModifier: ResolvedModifier[] = expert
+      ? [
+          {
+            id: `expertise:${skill}`,
+            source: "feature:expertise",
+            target: `skill.${skill}`,
+            op: "add",
+            enabled: true,
+            label: "Expertise",
+            amount: proficiencyTrace.value,
+          },
+        ]
+      : [];
+
+    const trace = resolve(base, [...expertiseModifier, ...forTarget(modifiers, `skill.${skill}`, scope)]);
     skillTraces[skill] = trace;
     skills[skill] = trace.value;
   }
