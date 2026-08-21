@@ -15,9 +15,11 @@ third-party API at runtime.
 
 Which load phase a catalog belongs to, declared in the manifest as `tier: 1 | 2`.
 
-- **Tier 1 (21 KB gzipped)** — `classes`, `subclasses`, `races`, `subraces`. The minimal-creation
-  picker set. **Blocks** behind the sync gate; ~0.9s on weak venue wifi.
-- **Tier 2 (197 KB gzipped)** — everything else, including spells. Downloads in the background;
+- **Tier 1 (32 KB gzipped)** — `classes`, `subclasses`, `races`, `subraces`, `levels`. The
+  minimal-creation set. **Blocks** behind the sync gate; ~1.35s on weak venue wifi. `levels` was
+  promoted from tier 2 because subclass timing is only derivable from it — see
+  [#147](https://github.com/Otisz/sheetcraft/issues/147).
+- **Tier 2 (186 KB gzipped)** — everything else, including spells. Downloads in the background;
   nothing ever waits on it.
 
 Not a `required` boolean — booleans are not indexable in Dexie, and the tier number carries more
