@@ -36,6 +36,21 @@ User-authored content conforming to the **same schema as a catalog entry**, so i
 identically in derivation and character creation. Stored in parallel tables
 (`dnd_catalog_races` / `dnd_homebrew_races`).
 
+## Homebrew authoring tiers
+
+Which editing surface a homebrew type gets, driven by measured entry complexity:
+
+- **Form** — `equipment` (15 leaves), `subrace` (16), `spell` (32), `race` (49). Shallow enough for
+  a phone form.
+- **Minimal form** — `subclass`. Name, parent class, level features as prose + modifier records.
+  Not the full schema (worst case 625 leaves); shipped anyway because the SRD has only one subclass
+  per class.
+- **JSON editor only** — `class` (190 leaves, 11 deep) and `background` (168). A phone form for
+  these is not buildable. Zod-validated paste, errors reported per path.
+
+The JSON editor accepts **every** type, so it is the escape hatch that makes "homebrew uses the same
+schema as catalog" honest.
+
 ## Catalog reference
 
 A namespaced string pointing at catalog or homebrew content: `catalog:human`, `homebrew:azureborn`.
@@ -43,8 +58,14 @@ The prefix selects the table; the suffix is the entry's `index`.
 
 Parsed in exactly **one** place — `resolveRef(type, ref)`. Nothing else splits the string.
 
-Homebrew deletes are **blocked** while any character references the entry, so a homebrew ref never
-dangles. Catalog refs can still dangle after an upstream re-seed; those render as
+Homebrew **edits apply live** — a character references by id, so changing an entry recomputes every
+character using it. Edits show which characters are affected (informational, non-blocking); deletes
+are **blocked** while referenced, so a homebrew ref never dangles. The asymmetry is deliberate: an
+edit changes a referent that still exists, a delete would strand the character.
+
+Homebrew ids are name slugs scoped to the homebrew table (`Azureborn` → `homebrew:azureborn`).
+`catalog:human` and `homebrew:human` coexist — the prefix disambiguates. Strip apostrophes
+**before** the separator pass, or `Healer's Kit` slugs to `healer-s-kit` instead of `healers-kit`. Catalog refs can still dangle after an upstream re-seed; those render as
 `⚠ unknown (<index>)` and derived values fall back to base rather than throwing.
 
 ## Character record
