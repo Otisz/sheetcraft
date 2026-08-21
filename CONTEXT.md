@@ -91,6 +91,18 @@ The one input that looks derived but isn't. At each level-up a 2014 player eithe
 takes the fixed average, so the roll is a genuine input. Stored as a **per-level array**, not a
 total: `maxHp = sum(hpRolls) + conMod * level`, which stays correct when CON changes.
 
+## Backup file
+
+The export artifact — `sheetcraft-backup-<date>.json`. Self-contained: characters plus **only the
+homebrew entries they reference**, so a restore onto a wiped device produces no dangling refs.
+Catalog refs (`catalog:human`) are **not** embedded; they resolve against the importing device's SRD.
+
+Carries two versions: `formatVersion` (the envelope) and `schemaVersion` (the records inside).
+A newer `formatVersion` is **refused**, never guessed at.
+
+Import **never overwrites** — every imported character gets a fresh id and a `(imported)` name
+suffix. There is no undo and no server copy, so a visible duplicate beats a silent overwrite.
+
 ## Currency
 
 `play.currency: { cp, sp, ep, gp, pp }` — **play state, not character data**, because money changes
