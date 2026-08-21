@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { CatalogSyncProvider } from "@/features/dnd/catalog";
 
 /**
  * The `/dnd` layout route. Everything below it is client-only — it reads from
@@ -11,6 +12,10 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
  *
  * This is the route-level guarantee. The `prerender.filter` in vite.config.ts
  * is the separate build-time one — see docs/adr/0003-spa-shell-and-prerender.md.
+ *
+ * The sync gate is a provider here rather than a loader on this route: loaders
+ * are per-match, SWR-cached, re-run on navigation, and non-blocking past
+ * ~1000ms. See CONTEXT.md § Sync gate.
  */
 export const Route = createFileRoute("/dnd")({
   ssr: false,
@@ -18,5 +23,9 @@ export const Route = createFileRoute("/dnd")({
 });
 
 function DndLayout() {
-  return <Outlet />;
+  return (
+    <CatalogSyncProvider>
+      <Outlet />
+    </CatalogSyncProvider>
+  );
 }

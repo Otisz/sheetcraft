@@ -61,6 +61,57 @@ The provider on the `/dnd` layout route that blocks first paint until tier 1 is 
 route loader — loaders are SWR-cached, re-run on navigation, and non-blocking past ~1000ms.
 
 Clears when the manifest version matches `dnd_meta.manifestVersion` and tier-1 tables are non-empty.
+Both halves are checked: the version row could outlive a wipe of the object stores, and a gate
+trusting the number alone would render creation pickers with nothing in them.
+
+On a mismatch it blocks on **tier 1 only** and starts [tier 2](#catalog-tier) without awaiting it.
+
+`CatalogSyncProvider` is the wiring; the logic lives in `features/dnd/catalog/sync.ts` behind an
+injected `fetch`, which is how the whole thing is tested without a browser.
+
+## Re-seed
+
+Installing one catalog. **Per-catalog and transactional**, and the ordering is load-bearing:
+
+```
+parse and validate BEFORE opening the transaction
+  → clear() + bulkPut() together in one transaction
+    → dnd_meta.manifestVersion written LAST, after every tier-1 catalog succeeds
+```
+
+Each step buys something specific:
+
+- **Parse first.** Awaiting a non-Dexie promise *inside* a transaction auto-commits it, and the
+  next write then throws `TransactionInactiveError`.
+- **`clear()` + `bulkPut()` together.** A failure rolls back to the *old* rows, so the table is
+  never empty. The app degrades to stale data, never to no data.
+- **`bulkPut`, not `bulkAdd`.** A re-seed is an upsert, and a caught `BulkError` from `bulkAdd`
+  still persists its successful rows — a half-populated table that looks complete.
+- **Version last.** An interrupted sync re-runs on next load rather than being falsely marked
+  current.
+
+Each tier records its completion under its own `dnd_meta` key — `manifestVersion` for tier 1, which
+is what the gate blocks on, and `tier2Version` for tier 2, which nothing blocks on but which stops a
+warm start re-downloading 186 KB on every mount.
+
+Only `dnd_catalog_*` is touched. [Homebrew](#homebrew) is structurally out of reach.
+
+## Sync failure
+
+Classified, because the classification decides what the user is offered:
+
+| kind | cause | surface |
+|---|---|---|
+| `offline` | the request never completed | retry |
+| `http` | non-2xx; a stale manifest 404s here | retry, naming the catalog |
+| `malformed` | not JSON, or failed its zod schema | retry; old data kept |
+| `quota` | IndexedDB is full | **no retry** — retrying cannot help |
+| `write` | any other write failure | retry |
+
+**Tier-1 failure** blocks, with an inline retry *and* a way back out — a character whose catalogs
+are already installed must stay reachable, so the gate is never a dead end. **Tier-2 failure** shows
+a persistent, dismissible banner and the app stays usable; silent retry was rejected because the gap
+is otherwise invisible until someone hits a half-populated picker and concludes the app is broken.
 
 ## Homebrew
 
