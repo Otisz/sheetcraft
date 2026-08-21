@@ -179,7 +179,10 @@ item, or player choice changes a number.
 
 - **target** — a flat string path from a **closed** vocabulary (`ac`, `skill.stealth`, `save.dex`,
   `attack.<weaponId>.hit`, `spell.saveDc`, …). Unknown targets are validation errors, not no-ops.
-- **op** — `add` | `set` | `min` | `max`. Numeric only.
+- **op** — `add` | `set` | `min` | `max`. Numeric only. `min` and `max` name the **bound, not the
+  function**: `min` is a floor (the value becomes *at least* the amount), `max` is a ceiling. This
+  is the SRD's own reading — "your AC can't be less than 12" is a `min` of 12 — so `op:'min'` is
+  arithmetically `Math.max`. Several `set`s resolve last-wins; `set` is the one non-commutative op.
 - **value** — a number, or a **reference** (`{ref:'mod.con'}`, `{ref:'proficiencyBonus'}`) resolved
   at derivation time so it never goes stale.
 - **source** — namespaced provenance (`feature:*`, `equip:*`, `item:*`, `override`), powering the
@@ -203,6 +206,19 @@ Resolution is **phased**, so record order never affects the result:
 ```
 override (short-circuit) → set → add → min → max
 ```
+
+Within a phase, records apply in whatever order they are stored — every op but `set` is
+commutative, so that cannot change a result. Validation runs over **every** modifier, enabled or
+not: a typo that only surfaces when the player flips a [Toggle](#toggle) mid-session is exactly the
+trap a closed vocabulary exists to prevent.
+
+**References resolve acyclically.** `ability.*` targets resolve first and cannot themselves use a
+`{ref}`, because every reference is expressed in terms of ability scores. A racial bonus or ASI is
+a plain number, which is all this restriction costs. Proficiency bonus resolves next; everything
+else may reference either.
+
+Implemented in `src/features/dnd/derive/`, pure — no Dexie, React, network or clock, asserted by
+a test rather than assumed.
 
 ## Base formula
 
