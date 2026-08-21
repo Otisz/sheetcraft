@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_CONTEXT } from "@/features/dnd/derive/context";
 import { derive } from "@/features/dnd/derive/derive";
 import { abilities, makeCharacter, makeModifier } from "@/features/dnd/derive/fixtures";
 
@@ -29,7 +30,7 @@ describe("ability modifiers", () => {
   ])("score %i gives modifier %i", (score, expected) => {
     const character = makeCharacter({ abilities: abilities({ str: score }) });
 
-    expect(derive(character).abilityModifiers.str).toBe(expected);
+    expect(derive(character, EMPTY_CONTEXT).abilityModifiers.str).toBe(expected);
   });
 
   it("derives all six independently", () => {
@@ -37,7 +38,7 @@ describe("ability modifiers", () => {
       abilities: { str: 8, dex: 14, con: 15, int: 12, wis: 20, cha: 3 },
     });
 
-    expect(derive(character).abilityModifiers).toEqual({
+    expect(derive(character, EMPTY_CONTEXT).abilityModifiers).toEqual({
       str: -1,
       dex: 2,
       con: 2,
@@ -54,7 +55,7 @@ describe("ability modifiers", () => {
       modifiers: [makeModifier({ target: "ability.str", op: "add", value: 2, source: "race:half-orc" })],
     });
 
-    const derived = derive(character);
+    const derived = derive(character, EMPTY_CONTEXT);
 
     expect(derived.abilityScores.str).toBe(17);
     expect(derived.abilityModifiers.str).toBe(3);
@@ -79,7 +80,7 @@ describe("proficiency bonus", () => {
   ])("level %i gives +%i", (level, expected) => {
     const character = makeCharacter({ level, hpRolls: Array(level).fill(1) });
 
-    expect(derive(character).proficiencyBonus).toBe(expected);
+    expect(derive(character, EMPTY_CONTEXT).proficiencyBonus).toBe(expected);
   });
 
   it("can be modified, so a homebrew feature can touch it", () => {
@@ -89,7 +90,7 @@ describe("proficiency bonus", () => {
       modifiers: [makeModifier({ target: "proficiencyBonus", op: "add", value: 1 })],
     });
 
-    expect(derive(character).proficiencyBonus).toBe(4);
+    expect(derive(character, EMPTY_CONTEXT).proficiencyBonus).toBe(4);
   });
 });
 
@@ -102,15 +103,15 @@ describe("max HP", () => {
       abilities: abilities({ con: 16 }),
     });
 
-    expect(derive(character).maxHp).toBe(32);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(32);
   });
 
   it("recomputes when CON changes — the reason hpRolls is an array, not a total", () => {
     const base = makeCharacter({ level: 3, hpRolls: [10, 6, 7], abilities: abilities({ con: 16 }) });
     const afterAsi = makeCharacter({ level: 3, hpRolls: [10, 6, 7], abilities: abilities({ con: 18 }) });
 
-    expect(derive(base).maxHp).toBe(32);
-    expect(derive(afterAsi).maxHp).toBe(35);
+    expect(derive(base, EMPTY_CONTEXT).maxHp).toBe(32);
+    expect(derive(afterAsi, EMPTY_CONTEXT).maxHp).toBe(35);
   });
 
   it("recomputes when CON changes via a modifier, not just the base score", () => {
@@ -121,14 +122,14 @@ describe("max HP", () => {
       modifiers: [makeModifier({ target: "ability.con", op: "add", value: 2, source: "item:amulet" })],
     });
 
-    expect(derive(character).maxHp).toBe(35);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(35);
   });
 
   it("subtracts for a negative CON modifier", () => {
     // Level 2, rolls 6/4, CON 8 (-1): 10 - 2 = 8.
     const character = makeCharacter({ level: 2, hpRolls: [6, 4], abilities: abilities({ con: 8 }) });
 
-    expect(derive(character).maxHp).toBe(8);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(8);
   });
 
   it("never falls below 1, however punishing the CON", () => {
@@ -136,13 +137,13 @@ describe("max HP", () => {
     // Sheetcraft's floor, not the SRD's — the 2014 rules state no minimum.
     const character = makeCharacter({ level: 1, hpRolls: [1], abilities: abilities({ con: 3 }) });
 
-    expect(derive(character).maxHp).toBe(1);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(1);
   });
 
   it("shows the floor as a trace step, so the steps still explain the value", () => {
     const character = makeCharacter({ level: 1, hpRolls: [1], abilities: abilities({ con: 3 }) });
 
-    const trace = derive(character).explain("maxHp");
+    const trace = derive(character, EMPTY_CONTEXT).explain("maxHp");
 
     expect(trace.value).toBe(1);
     expect(trace.base).toBe(-3);
@@ -152,7 +153,7 @@ describe("max HP", () => {
   it("leaves the trace alone when the floor does not bite", () => {
     const character = makeCharacter({ level: 1, hpRolls: [10], abilities: abilities({ con: 14 }) });
 
-    expect(derive(character).explain("maxHp").steps).toEqual([]);
+    expect(derive(character, EMPTY_CONTEXT).explain("maxHp").steps).toEqual([]);
   });
 
   it("accepts a modifier from a feature like Tough or Draconic Resilience", () => {
@@ -163,7 +164,7 @@ describe("max HP", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "add", value: 6, source: "feature:tough" })],
     });
 
-    expect(derive(character).maxHp).toBe(38);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(38);
   });
 });
 
@@ -179,7 +180,7 @@ describe("phased resolution", () => {
     // set 20 → add 5 = 25 → floor of 30 raises to 30 → ceiling of 10 caps at 10.
     const character = makeCharacter({ modifiers: phased });
 
-    expect(derive(character).maxHp).toBe(10);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(10);
   });
 
   it("gives the same result whatever order the records are stored in", () => {
@@ -190,7 +191,7 @@ describe("phased resolution", () => {
       [phased[1], phased[3], phased[0], phased[2]],
     ];
 
-    const results = permutations.map((modifiers) => derive(makeCharacter({ modifiers })).maxHp);
+    const results = permutations.map((modifiers) => derive(makeCharacter({ modifiers }), EMPTY_CONTEXT).maxHp);
 
     expect(results).toEqual([10, 10, 10, 10]);
   });
@@ -205,11 +206,11 @@ describe("phased resolution", () => {
     const ceilingCaps = makeCharacter({ modifiers: [makeModifier({ target: "maxHp", op: "max", value: 6 })] });
     const ceilingIdle = makeCharacter({ modifiers: [makeModifier({ target: "maxHp", op: "max", value: 40 })] });
 
-    expect(derive(base).maxHp).toBe(10);
-    expect(derive(floorRaises).maxHp).toBe(25);
-    expect(derive(floorIdle).maxHp).toBe(10);
-    expect(derive(ceilingCaps).maxHp).toBe(6);
-    expect(derive(ceilingIdle).maxHp).toBe(10);
+    expect(derive(base, EMPTY_CONTEXT).maxHp).toBe(10);
+    expect(derive(floorRaises, EMPTY_CONTEXT).maxHp).toBe(25);
+    expect(derive(floorIdle, EMPTY_CONTEXT).maxHp).toBe(10);
+    expect(derive(ceilingCaps, EMPTY_CONTEXT).maxHp).toBe(6);
+    expect(derive(ceilingIdle, EMPTY_CONTEXT).maxHp).toBe(10);
   });
 
   it("takes the last set when several compete, since set is not commutative", () => {
@@ -220,7 +221,7 @@ describe("phased resolution", () => {
       ],
     });
 
-    expect(derive(character).maxHp).toBe(30);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(30);
   });
 
   it("stacks two adds from different sources", () => {
@@ -231,7 +232,7 @@ describe("phased resolution", () => {
       ],
     });
 
-    expect(derive(character).maxHp).toBe(15);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(15);
   });
 
   it("ignores a disabled modifier — the Toggle", () => {
@@ -239,7 +240,7 @@ describe("phased resolution", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "add", value: 100, enabled: false })],
     });
 
-    expect(derive(character).maxHp).toBe(10);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(10);
   });
 });
 
@@ -254,15 +255,15 @@ describe("override", () => {
       ],
     });
 
-    expect(derive(character).maxHp).toBe(7);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(7);
   });
 
   it("wins wherever it sits in the record order", () => {
     const override = makeModifier({ id: "o", target: "maxHp", op: "set", value: 7, source: "override" });
     const other = makeModifier({ id: "a", target: "maxHp", op: "add", value: 5 });
 
-    expect(derive(makeCharacter({ modifiers: [override, other] })).maxHp).toBe(7);
-    expect(derive(makeCharacter({ modifiers: [other, override] })).maxHp).toBe(7);
+    expect(derive(makeCharacter({ modifiers: [override, other] }), EMPTY_CONTEXT).maxHp).toBe(7);
+    expect(derive(makeCharacter({ modifiers: [other, override] }), EMPTY_CONTEXT).maxHp).toBe(7);
   });
 
   it("rejects an override that is not a set, rather than quietly treating it as one", () => {
@@ -271,7 +272,7 @@ describe("override", () => {
       modifiers: [makeModifier({ id: "bad-override", target: "maxHp", op: "add", value: 5, source: "override" })],
     });
 
-    expect(() => derive(character)).toThrow(/override must use op "set"/);
+    expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/override must use op "set"/);
   });
 
   it("is ignored when toggled off, leaving the derived value", () => {
@@ -279,7 +280,7 @@ describe("override", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "set", value: 7, source: "override", enabled: false })],
     });
 
-    expect(derive(character).maxHp).toBe(10);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(10);
   });
 });
 
@@ -291,7 +292,7 @@ describe("reference values", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "add", value: { ref: "mod.con" } })],
     });
 
-    expect(derive(character).maxHp).toBe(16);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(16);
   });
 
   it("goes with the ability when it changes", () => {
@@ -299,7 +300,7 @@ describe("reference values", () => {
     const low = makeCharacter({ abilities: abilities({ wis: 10 }), modifiers });
     const high = makeCharacter({ abilities: abilities({ wis: 18 }), modifiers });
 
-    expect(derive(high).maxHp - derive(low).maxHp).toBe(4);
+    expect(derive(high, EMPTY_CONTEXT).maxHp - derive(low, EMPTY_CONTEXT).maxHp).toBe(4);
   });
 
   it("resolves proficiencyBonus", () => {
@@ -310,7 +311,7 @@ describe("reference values", () => {
     });
 
     // 9 rolls of 1, CON 10 (+0), plus a proficiency bonus of 4.
-    expect(derive(character).maxHp).toBe(13);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(13);
   });
 
   it("resolves level", () => {
@@ -320,7 +321,7 @@ describe("reference values", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "add", value: { ref: "level" } })],
     });
 
-    expect(derive(character).maxHp).toBe(15);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(15);
   });
 
   it("resolves an ability score as well as its modifier", () => {
@@ -329,7 +330,7 @@ describe("reference values", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "add", value: { ref: "score.str" } })],
     });
 
-    expect(derive(character).maxHp).toBe(27);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(27);
   });
 });
 
@@ -339,7 +340,7 @@ describe("validation", () => {
       modifiers: [makeModifier({ id: "bad", target: "armour-class", op: "add", value: 2 })],
     });
 
-    expect(() => derive(character)).toThrow(/armour-class/);
+    expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/armour-class/);
   });
 
   it("rejects an unknown target even when the modifier is disabled", () => {
@@ -348,7 +349,7 @@ describe("validation", () => {
       modifiers: [makeModifier({ target: "skill.stelth", op: "add", value: 2, enabled: false })],
     });
 
-    expect(() => derive(character)).toThrow(/skill\.stelth/);
+    expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/skill\.stelth/);
   });
 
   it("rejects an unknown reference", () => {
@@ -356,7 +357,7 @@ describe("validation", () => {
       modifiers: [makeModifier({ target: "maxHp", op: "add", value: { ref: "mod.luck" } })],
     });
 
-    expect(() => derive(character)).toThrow(/mod\.luck/);
+    expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/mod\.luck/);
   });
 
   it("names the offending modifier so the error is actionable", () => {
@@ -364,7 +365,7 @@ describe("validation", () => {
       modifiers: [makeModifier({ id: "mod-42", target: "nonsense", op: "add", value: 1, source: "homebrew:x" })],
     });
 
-    expect(() => derive(character)).toThrow(/mod-42/);
+    expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/mod-42/);
   });
 
   it("accepts every target in the closed vocabulary", () => {
@@ -385,7 +386,7 @@ describe("validation", () => {
       ],
     });
 
-    expect(() => derive(character)).not.toThrow();
+    expect(() => derive(character, EMPTY_CONTEXT)).not.toThrow();
   });
 
   it("rejects a skill outside the 18", () => {
@@ -393,7 +394,7 @@ describe("validation", () => {
       modifiers: [makeModifier({ target: "skill.baking", op: "add", value: 2 })],
     });
 
-    expect(() => derive(character)).toThrow(/skill\.baking/);
+    expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/skill\.baking/);
   });
 });
 
@@ -406,7 +407,7 @@ describe("provenance", () => {
       modifiers: [makeModifier({ id: "tough", target: "maxHp", op: "add", value: 6, source: "feature:tough" })],
     });
 
-    const trace = derive(character).explain("maxHp");
+    const trace = derive(character, EMPTY_CONTEXT).explain("maxHp");
 
     expect(trace.value).toBe(38);
     expect(trace.base).toBe(32);
@@ -424,7 +425,7 @@ describe("provenance", () => {
     });
 
     // Base is 10 (one roll) + 3 (CON 16 at level 1) = 13; the reference adds 3 more.
-    expect(derive(character).explain("maxHp").steps[0]).toMatchObject({ amount: 3, value: 16 });
+    expect(derive(character, EMPTY_CONTEXT).explain("maxHp").steps[0]).toMatchObject({ amount: 3, value: 16 });
   });
 
   it("lists the steps in resolution order, not record order", () => {
@@ -436,7 +437,7 @@ describe("provenance", () => {
     });
 
     expect(
-      derive(character)
+      derive(character, EMPTY_CONTEXT)
         .explain("maxHp")
         .steps.map((step) => step.id),
     ).toEqual(["s", "a"]);
@@ -450,7 +451,7 @@ describe("provenance", () => {
       ],
     });
 
-    const trace = derive(character).explain("maxHp");
+    const trace = derive(character, EMPTY_CONTEXT).explain("maxHp");
 
     expect(trace.value).toBe(7);
     expect(trace.steps.map((step) => step.id)).toEqual(["o"]);
@@ -461,11 +462,13 @@ describe("provenance", () => {
       modifiers: [makeModifier({ id: "off", target: "maxHp", op: "add", value: 5, enabled: false })],
     });
 
-    expect(derive(character).explain("maxHp").steps).toEqual([]);
+    expect(derive(character, EMPTY_CONTEXT).explain("maxHp").steps).toEqual([]);
   });
 
   it("explains a value with no modifiers as its bare base", () => {
-    const trace = derive(makeCharacter({ level: 5, hpRolls: Array(5).fill(1) })).explain("proficiencyBonus");
+    const trace = derive(makeCharacter({ level: 5, hpRolls: Array(5).fill(1) }), EMPTY_CONTEXT).explain(
+      "proficiencyBonus",
+    );
 
     expect(trace).toMatchObject({ base: 3, value: 3, steps: [] });
   });
@@ -479,7 +482,7 @@ describe("purity", () => {
     });
     const before = structuredClone(character);
 
-    derive(character);
+    derive(character, EMPTY_CONTEXT);
 
     expect(character).toEqual(before);
   });
@@ -487,6 +490,6 @@ describe("purity", () => {
   it("returns the same values for the same input", () => {
     const character = makeCharacter({ level: 7, hpRolls: [10, 6, 7, 5, 8, 4, 6], abilities: abilities({ con: 14 }) });
 
-    expect(derive(character).maxHp).toBe(derive(character).maxHp);
+    expect(derive(character, EMPTY_CONTEXT).maxHp).toBe(derive(character, EMPTY_CONTEXT).maxHp);
   });
 });

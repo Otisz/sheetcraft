@@ -6,13 +6,17 @@
  * surface testable against transcribed rulebook values rather than against
  * itself. See ADR-0002.
  *
- * This module covers abilities, proficiency bonus and max HP. AC, skills and
- * saves land on the same seam in #157: they read `DerivedCore` and add their
- * own targets, so nothing here needs to change to accommodate them.
+ * This module covers every derived value on the sheet: abilities, proficiency
+ * bonus, max HP, AC, skills, saves, passive perception and spellcasting.
+ *
+ * The catalog data AC and spellcasting need — armor's `{base, dex_bonus,
+ * max_bonus}`, the class's spellcasting ability — arrives as a `DeriveContext`
+ * the caller resolves, because the engine cannot reach Dexie and stay pure.
  */
-import { ABILITIES, type Abil, type CharacterRecord, type Modifier } from "@/features/dnd/db/schema";
+import { ABILITIES, type Abil, type CharacterRecord, type Modifier, type Ref } from "@/features/dnd/db/schema";
+import type { DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
 import { type ResolvedModifier, resolve, type Trace } from "@/features/dnd/derive/resolve";
-import { isReference, isTarget, type Reference, type Target } from "@/features/dnd/derive/targets";
+import { isReference, isTarget, type Reference, SKILLS, type Skill, type Target } from "@/features/dnd/derive/targets";
 
 /**
  * A modifier that names something the engine cannot address. Thrown rather
@@ -37,12 +41,29 @@ export type Derived = {
   abilityModifiers: Record<Abil, number>;
   proficiencyBonus: number;
   maxHp: number;
+  armorClass: number;
+  /** Every skill's check modifier, proficiency and expertise included. */
+  skills: Record<Skill, number>;
+  saves: Record<Abil, number>;
+  passivePerception: number;
+  /** `null` for a non-caster — a number there would be one the sheet cannot tell from a real one. */
+  spellSaveDc: number | null;
+  spellAttackBonus: number | null;
   /** Why a value is what it is. Throws for a target this engine does not derive. */
   explain(target: DerivedTarget): Trace;
 };
 
-/** The targets `explain` can currently account for. Widens as #157 lands. */
-export type DerivedTarget = "proficiencyBonus" | "maxHp" | `ability.${Abil}`;
+/** Every target `explain` accounts for — which is every target the vocabulary has. */
+export type DerivedTarget =
+  | "proficiencyBonus"
+  | "maxHp"
+  | "ac"
+  | "passivePerception"
+  | "spell.saveDc"
+  | "spell.attack"
+  | `ability.${Abil}`
+  | `save.${Abil}`
+  | `skill.${Skill}`;
 
 /** PHB p.13: the modifier is `floor((score - 10) / 2)`, negatives included. */
 export function abilityModifier(score: number): number {
@@ -52,6 +73,48 @@ export function abilityModifier(score: number): number {
 /** PHB p.15. Derived from level, never read from a catalog — the catalog lies at 0. */
 function baseProficiencyBonus(level: number): number {
   return 2 + Math.floor((level - 1) / 4);
+}
+
+/**
+ * The AC base formula, over structural armor data only. Everything a *feature*
+ * contributes — Unarmored Defense, a magic item, a homebrew ruling — arrives as
+ * a modifier record instead, because SRD features are prose-only.
+ *
+ * Shields are excluded here by the caller: the SRD stores the Shield as an
+ * armor entry whose `base: 2` is **additive, not absolute**, so treating it as
+ * the base armor would produce an AC of 2.
+ */
+function baseArmorClass(armor: EquippedArmor | undefined, dexModifier: number): number {
+  if (!armor) {
+    return 10 + dexModifier;
+  }
+  if (!armor.dexBonus) {
+    return armor.base;
+  }
+
+  // `max_bonus` is **absent** rather than null on unlimited-dex light armor,
+  // so missing means uncapped. Reading it as 0 costs a DEX 18 rogue four
+  // points of AC. Confirmed against the vendored data.
+  const cap = armor.maxBonus ?? Number.POSITIVE_INFINITY;
+  return armor.base + Math.min(dexModifier, cap);
+}
+
+/** PHB p.175: `10 + the perception check modifier`. */
+const PASSIVE_BASE = 10;
+
+/** PHB p.205: `8 + proficiency + the spellcasting ability modifier`. */
+const SPELL_SAVE_DC_BASE = 8;
+
+/**
+ * Whether a proficiency list names this skill.
+ *
+ * Compares against the refs a skill *can* be named by rather than splitting
+ * the stored string — ref parsing lives in exactly one place, and that place is
+ * `resolveRef`, which the engine cannot reach. The 18 skills are a closed
+ * vocabulary, so enumerating the two possible refs is exhaustive.
+ */
+function listsSkill(refs: Ref[], skill: Skill): boolean {
+  return refs.includes(`catalog:${skill}`) || refs.includes(`homebrew:${skill}`);
 }
 
 /**
@@ -120,7 +183,7 @@ function forTarget(modifiers: Modifier[], target: Target, scope: ReferenceScope)
  */
 const MIN_MAX_HP = 1;
 
-export function derive(character: CharacterRecord): Derived {
+export function derive(character: CharacterRecord, context: DeriveContext): Derived {
   validate(character.modifiers);
 
   const { modifiers, level } = character;
@@ -169,17 +232,109 @@ export function derive(character: CharacterRecord): Derived {
     "Hit points cannot drop below 1",
   );
 
+  // Shields are partitioned out before the base formula, never into it: the
+  // Shield's `base: 2` is additive in the SRD. Each becomes a step, so the
+  // trace reads `base 16 → +2 shield` exactly as the sheet shows it.
+  const bodyArmor = context.armor.find((piece) => !piece.isShield);
+  const shields: ResolvedModifier[] = context.armor
+    .filter((piece) => piece.isShield)
+    .map((piece) => ({
+      id: `equip:${piece.index}`,
+      source: `equip:${piece.index}`,
+      target: "ac",
+      op: "add" as const,
+      enabled: true,
+      label: piece.name,
+      amount: piece.base,
+    }));
+
+  const acTrace = resolve(baseArmorClass(bodyArmor, abilityModifiers.dex), [
+    ...shields,
+    ...forTarget(modifiers, "ac", scope),
+  ]);
+
+  const saveTraces = {} as Record<Abil, Trace>;
+  const saves = {} as Record<Abil, number>;
+  for (const abil of ABILITIES) {
+    // A proficient save adds the bonus to the base. It is not a modifier
+    // record, so it is not a step — inventing one would put an entry in the
+    // trace that nothing in the character's data corresponds to.
+    const base = abilityModifiers[abil] + (character.proficiencies.saves.includes(abil) ? proficiencyTrace.value : 0);
+    const trace = resolve(base, forTarget(modifiers, `save.${abil}`, scope));
+    saveTraces[abil] = trace;
+    saves[abil] = trace.value;
+  }
+
+  const skillTraces = {} as Record<Skill, Trace>;
+  const skills = {} as Record<Skill, number>;
+  for (const skill of Object.keys(SKILLS) as Skill[]) {
+    // Expertise is a doubled proficiency bonus (PHB p.96) — expressed as a
+    // second helping of the same bonus, not as a special doubling op. A
+    // character listed for expertise is proficient by definition, so expertise
+    // alone still counts once for proficiency.
+    const expert = listsSkill(character.proficiencies.expertise, skill);
+    const proficient = expert || listsSkill(character.proficiencies.skills, skill);
+    const helpings = (proficient ? 1 : 0) + (expert ? 1 : 0);
+
+    const base = abilityModifiers[SKILLS[skill]] + proficiencyTrace.value * helpings;
+    const trace = resolve(base, forTarget(modifiers, `skill.${skill}`, scope));
+    skillTraces[skill] = trace;
+    skills[skill] = trace.value;
+  }
+
+  // The passive score follows the perception check, so anything that moved the
+  // check has already moved this — `passivePerception` records land on top.
+  const passiveTrace = resolve(PASSIVE_BASE + skills.perception, forTarget(modifiers, "passivePerception", scope));
+
+  // A non-caster has no DC and no attack bonus. `null` rather than a number the
+  // sheet could not tell from a real one.
+  const spellAbility = context.spellcastingAbility;
+  const saveDcTrace = spellAbility
+    ? resolve(
+        SPELL_SAVE_DC_BASE + proficiencyTrace.value + abilityModifiers[spellAbility],
+        forTarget(modifiers, "spell.saveDc", scope),
+      )
+    : null;
+  const spellAttackTrace = spellAbility
+    ? resolve(proficiencyTrace.value + abilityModifiers[spellAbility], forTarget(modifiers, "spell.attack", scope))
+    : null;
+
   return {
     abilityScores: scores,
     abilityModifiers,
     proficiencyBonus: proficiencyTrace.value,
     maxHp: maxHpTrace.value,
+    armorClass: acTrace.value,
+    skills,
+    saves,
+    passivePerception: passiveTrace.value,
+    spellSaveDc: saveDcTrace?.value ?? null,
+    spellAttackBonus: spellAttackTrace?.value ?? null,
     explain(target) {
       if (target === "maxHp") {
         return maxHpTrace;
       }
       if (target === "proficiencyBonus") {
         return proficiencyTrace;
+      }
+      if (target === "ac") {
+        return acTrace;
+      }
+      if (target === "passivePerception") {
+        return passiveTrace;
+      }
+      if (target === "spell.saveDc" || target === "spell.attack") {
+        const trace = target === "spell.saveDc" ? saveDcTrace : spellAttackTrace;
+        if (!trace) {
+          throw new Error(`Cannot explain ${target}: this character has no spellcasting ability`);
+        }
+        return trace;
+      }
+      if (target.startsWith("save.")) {
+        return saveTraces[target.slice("save.".length) as Abil];
+      }
+      if (target.startsWith("skill.")) {
+        return skillTraces[target.slice("skill.".length) as Skill];
       }
       return scoreTraces[target.slice("ability.".length) as Abil];
     },

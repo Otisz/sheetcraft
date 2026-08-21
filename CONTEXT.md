@@ -226,6 +226,41 @@ Hardcoded arithmetic for a derived value, using structural catalog data. AC's ba
 armor's `{base, dex_bonus, max_bonus}`; everything a *feature* contributes arrives as a modifier
 record instead, because SRD features are prose-only.
 
+```
+base = equippedArmor
+  ? armor.base + (armor.dex_bonus ? min(dexMod, armor.max_bonus ?? Infinity) : 0)
+  : 10 + dexMod
+```
+
+Two SRD traps, both confirmed against the vendored data:
+
+- **The Shield's `base: 2` is additive, not absolute.** It is an armor entry like any other, so
+  reading it as the base armor yields an AC of 2. Shields are partitioned out of the base formula
+  and contribute an `equip:shield` step instead — which is also how the trace reads on the sheet.
+- **`max_bonus` is absent, not null**, on unlimited-dex light armor. Missing therefore means
+  Infinity; reading it as 0 costs a DEX 18 rogue four points of AC.
+
+A proficient skill or save adds the proficiency bonus to the **base**, not as a step: it is not a
+modifier record, and inventing one would put an entry in the trace that nothing in the character's
+data corresponds to. **Expertise** is a second helping of the same bonus — `op:'add'` with
+`value:{ref:'proficiencyBonus'}`, never a special doubling operation.
+
+Passive perception is `10 + the perception check modifier`, so anything moving the check has
+already moved the passive score; `passivePerception` records land on top of it.
+
+Spell save DC (`8 + proficiency + ability`) and spell attack bonus (`proficiency + ability`) are
+`null` for a non-caster, not 0 — a number there is one the sheet cannot tell from a real one.
+
+## Derive context
+
+The resolved catalog data one derivation needs: the equipped armor entries and the class's
+spellcasting ability. Both are *structural* SRD data, and [derivation](#derivation) is pure, so they
+arrive as a second argument to `derive(character, context)` that the caller resolves through
+`resolveRef` — keeping ref parsing in the one place it lives.
+
+**Required, never defaulted.** A context that defaulted to empty would silently derive AC 10 for an
+armored character, which is a wrong number with no way to notice.
+
 ## Override
 
 A player-supplied value replacing a derived one. Stored as a modifier record with

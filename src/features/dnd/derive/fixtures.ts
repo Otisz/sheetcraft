@@ -6,6 +6,7 @@
  * Typed literals rather than JSON so a schema change breaks compilation.
  */
 import type { Abil, CharacterRecord, Modifier } from "@/features/dnd/db/schema";
+import type { EquippedArmor } from "@/features/dnd/derive/context";
 
 /** A character with every field at a neutral value, for tests to spread over. */
 export function makeCharacter(overrides: Partial<CharacterRecord> = {}): CharacterRecord {
@@ -63,3 +64,26 @@ export function makeModifier(overrides: Partial<Modifier> & Pick<Modifier, "targ
 export function abilities(patch: Partial<Record<Abil, number>>): Record<Abil, number> {
   return { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...patch };
 }
+
+/** An equipped armor entry, defaulting to a plain body armor. */
+export function makeArmor(overrides: Partial<EquippedArmor> & Pick<EquippedArmor, "index">): EquippedArmor {
+  return {
+    name: overrides.index,
+    base: 10,
+    dexBonus: false,
+    isShield: false,
+    ...overrides,
+  };
+}
+
+/**
+ * The SRD armor entries the AC cases use, transcribed from the vendored
+ * `equipment.json` rather than invented — `max_bonus` is absent on light armor
+ * there, and it is absent here.
+ */
+export const ARMOR = {
+  leather: makeArmor({ index: "leather-armor", name: "Leather Armor", base: 11, dexBonus: true }),
+  scaleMail: makeArmor({ index: "scale-mail", name: "Scale Mail", base: 14, dexBonus: true, maxBonus: 2 }),
+  chainMail: makeArmor({ index: "chain-mail", name: "Chain Mail", base: 16, dexBonus: false }),
+  shield: makeArmor({ index: "shield", name: "Shield", base: 2, dexBonus: false, isShield: true }),
+} as const;
