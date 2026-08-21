@@ -67,6 +67,17 @@ Only sparing the mask path explicitly gives both.
 | `dist/client/_shell.html` | SPA shell; body is `<!--$--><!--$--><!--/$-->`, no route content |
 | `dist/client/dnd/index.html` | correctly absent — not SSR'd |
 
+## Two gates, not one
+
+The prerender filter is a **build-time** guarantee about which HTML files get emitted. It is not a
+statement about rendering. The route-level counterpart is a single `ssr: false` on the `/dnd` layout
+(`src/routes/dnd/route.tsx`), which inherits hard to every child.
+
+Both are needed and they cover different things. `ssr: false` gates **rendering, not module
+evaluation** — a top-level `new Dexie(...)` in an imported module still executes on the server and
+still throws `indexedDB is not defined`. Keep Dexie construction inside effects and hooks, never at
+module scope.
+
 ## Consequences
 
 - The filter must be revisited whenever `maskPath` changes; the two are coupled and nothing enforces

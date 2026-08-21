@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**/src/**/*", "**/index.html", "**/vite.config.ts", "!**/src/routeTree.gen.ts"]
+    "includes": ["**/src/**/*", "**/index.html", "**/vite.config.ts", "**/vitest.config.ts", "!**/src/routeTree.gen.ts"]
   },
   "formatter": {
     "enabled": true,
