@@ -50,8 +50,10 @@ export type RefMissReason =
 
 /**
  * The **only** place a `catalog:` / `homebrew:` string is parsed. Deliberately
- * module-private: exporting it would re-open the seam that "nothing else
- * splits the ref" closes. See CONTEXT.md § Catalog reference.
+ * module-private: exporting it would let a caller re-implement the grammar
+ * around it. Callers that need one half of a ref use `refIndex` / `refSource`
+ * below, which are this function's accessors rather than a second parser. See
+ * CONTEXT.md § Catalog reference.
  */
 function parseRef(ref: string): ParsedRef | null {
   const separator = ref.indexOf(":");
@@ -102,4 +104,28 @@ export async function resolveRef<T extends CatalogEntry = CatalogEntry>(
   }
 
   return { found: true, source: parsed.source, index: parsed.index, entry };
+}
+
+/**
+ * The entry `index` a ref names, or `null` when the ref is malformed.
+ *
+ * Exists so that a caller filtering catalog rows by their parent — a
+ * subclass's `class.index`, a subrace's `race.index`, both of which upstream
+ * stores WITHOUT a prefix — does not hand-roll the grammar. Rejecting a
+ * prefix-less string is the point: `"human"` is not a ref, and treating it as
+ * a bare index would silently accept the one input that means a bug upstream.
+ */
+export function refIndex(ref: Ref | string | null | undefined): string | null {
+  if (ref === null || ref === undefined) {
+    return null;
+  }
+  return parseRef(ref)?.index ?? null;
+}
+
+/** Which table a ref selects, or `null` when the ref is malformed. */
+export function refSource(ref: Ref | string | null | undefined): RefSource | null {
+  if (ref === null || ref === undefined) {
+    return null;
+  }
+  return parseRef(ref)?.source ?? null;
 }

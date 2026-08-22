@@ -166,6 +166,36 @@ never stored — a stored copy is a copy that can go stale.
 `abilities` holds **base** scores; racial bonuses and ASIs are modifier records targeting
 `ability.<abil>`, so every point is traceable to its source.
 
+## Subclass timing
+
+The level at which a class chooses its subclass. **Derived, never hardcoded**: the first level whose
+`Levels` row carries a `subclass` field — 1 for cleric/sorcerer/warlock, 2 for druid/wizard, 3 for
+the other seven. Deriving it means a homebrew class shipping its own `Levels` rows gets correct
+timing for free.
+
+The field is **required at or above the threshold and hidden below it**. Below it, an already-chosen
+subclass is **kept, not cleared** — dropping the value would lose a choice to a mis-tap on the level
+stepper, and a hidden value is simply not required. A change of *class*, by contrast, does clear it:
+the subclass belonged to the old class.
+
+`null` — rather than an unreachable 21 — is what "this class never picks a subclass" looks like, so
+that case stays distinguishable from a very late one.
+
+## Ability entry method
+
+How base scores get entered: **manual** (no bounds — there are deliberately no balance warnings,
+mechanical sanity is the table's business), **standard array** (15/14/13/12/10/8, each value
+assigned exactly once), or **point buy** (8–15, budget 27, PHB cost table, which the standard array
+happens to cost exactly).
+
+**Switching method resets to that method's defaults** rather than clamping what came before: a
+manual 18 silently becoming a point-buy 15 is more surprising than an obvious reset, because the
+user never sees it happen.
+
+Racial bonuses apply **after** the method's ceiling, as [modifier records](#modifier-record) — so a
+dwarf with a point-buy 15 legitimately reaches CON 17, and the stored `abilities` stay exactly as
+entered. See [Input vs derived](#input-vs-derived).
+
 ## Hit point rolls (`hpRolls`)
 
 The one input that looks derived but isn't. At each level-up a 2014 player either rolls a hit die or

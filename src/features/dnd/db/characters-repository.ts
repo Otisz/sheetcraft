@@ -1,6 +1,6 @@
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
-import type { Abil, CharacterRecord, Ref } from "@/features/dnd/db/schema";
+import type { Abil, CharacterRecord, Modifier, Ref } from "@/features/dnd/db/schema";
 import { ABILITIES } from "@/features/dnd/db/schema";
 
 /**
@@ -21,6 +21,13 @@ export type CreateCharacterInput = {
   alignment?: string | null;
   abilities?: Partial<Record<Abil, number>>;
   hpRolls?: number[];
+  /**
+   * Racial bonuses and anything else the creation flow derives from the
+   * chosen race. They arrive as records rather than folded into `abilities`,
+   * so a later race change swaps them cleanly and the sheet can explain why
+   * CON is 16. See CONTEXT.md § Input vs derived.
+   */
+  modifiers?: Modifier[];
 };
 
 /**
@@ -90,6 +97,7 @@ export async function createCharacter(
     alignment: input.alignment ?? null,
     abilities: { ...defaults.abilities, ...input.abilities },
     hpRolls: input.hpRolls ?? [],
+    modifiers: input.modifiers ?? [],
   };
 
   await db.dnd_characters.add(record);

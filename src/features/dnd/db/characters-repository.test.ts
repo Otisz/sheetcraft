@@ -83,6 +83,38 @@ describe("create", () => {
     expect(created.alignment).toBeNull();
   });
 
+  it("stores the racial modifier records the creation flow supplies", async () => {
+    const created = await createCharacter(
+      {
+        ...FIGHTER,
+        modifiers: [
+          {
+            id: "race:catalog:dwarf:ability.con",
+            source: "race:catalog:dwarf",
+            target: "ability.con",
+            op: "add",
+            value: 2,
+            enabled: true,
+            label: "Dwarf +2 CON",
+          },
+        ],
+      },
+      db,
+    );
+
+    const stored = await getCharacter(created.id, db);
+    expect(stored?.modifiers).toHaveLength(1);
+    expect(stored?.modifiers[0].target).toBe("ability.con");
+    // The bonus lives in the record, never in the stored score.
+    expect(stored?.abilities.con).toBe(10);
+  });
+
+  it("defaults to no modifiers", async () => {
+    const created = await createCharacter(FIGHTER, db);
+
+    expect(created.modifiers).toEqual([]);
+  });
+
   it("gives every character a distinct id", async () => {
     const first = await createCharacter(FIGHTER, db);
     const second = await createCharacter(FIGHTER, db);
