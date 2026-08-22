@@ -73,12 +73,18 @@ export type FormDraft = {
 };
 
 /**
- * A blank draft. Nothing is pre-filled — a form that opens with `30` in the
- * speed field is a form that ships that 30 for every race nobody looked at.
- * The two exceptions are the units, which are the same for practically every
- * entry and are a chore rather than a choice.
+ * A blank draft.
+ *
+ * The same one for every type — the draft is a union of all the forms' fields
+ * and each form reads only its own, so there is nothing type-specific to
+ * decide here. Taking a type it never read would imply otherwise.
+ *
+ * Nothing is pre-filled: a form that opens with `30` in the speed field is a
+ * form that ships that 30 for every race nobody looked at. The one exception
+ * is the cost unit, which is `gp` for practically every entry and is a chore
+ * rather than a choice.
  */
-export function emptyFormDraft(_type: HomebrewType): FormDraft {
+export function emptyFormDraft(): FormDraft {
   return {
     name: "",
     parentRef: null,
@@ -143,10 +149,7 @@ function commaList(text: string): string[] {
  * more honest than an empty string that looks like a missing value.
  */
 function reference(collection: string, name: string) {
-  const index = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const index = slugPart(name);
   return { index, name, url: `/api/${collection}/${index}` };
 }
 
@@ -261,9 +264,14 @@ export function buildCandidate(type: HomebrewType, draft: FormDraft): Candidate 
     // `classes` and `backgrounds` are JSON-only: 190 and 168 leaves, and a
     // phone form for either is not buildable. See CONTEXT.md § Homebrew
     // authoring tiers.
+    //
+    // Throwing rather than returning a `{ name }` that no schema accepts: a
+    // half-built candidate would travel to the repository and come back as a
+    // pile of "required" issues pointing at fields the user was never shown,
+    // which reads as the form being broken rather than absent.
     case "classes":
     case "backgrounds":
-      return { name };
+      throw new Error(`${type} has no form — it is authored as JSON.`);
   }
 }
 
@@ -360,7 +368,7 @@ export function draftFromEntry(
   entry: StoredEntry,
   parentSource: "catalog" | "homebrew" = "catalog",
 ): FormDraft {
-  const draft = emptyFormDraft(type);
+  const draft = emptyFormDraft();
   draft.name = str(entry.name);
 
   switch (type) {

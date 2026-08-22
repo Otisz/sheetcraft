@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Switch } from "@/components/ui/switch";
-import { FieldError } from "@/features/dnd/creation/field-error";
-import { cn } from "@/lib/utils";
+import { FieldError } from "@/features/dnd/content";
+import { cn, THUMB_CONTROL } from "@/lib/utils";
 
 /**
  * The form controls the homebrew forms are built from. Thumb-height
@@ -9,8 +9,16 @@ import { cn } from "@/lib/utils";
  * same phone, and a homebrew form that looked different would look broken.
  */
 
-const CONTROL =
-  "h-12 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive";
+/**
+ * A text input, whole: the thumb-height shape plus the border, focus ring and
+ * invalid state. Named for what it is rather than `CONTROL`, which elsewhere
+ * means the size alone.
+ */
+const TEXT_INPUT = cn(
+  THUMB_CONTROL,
+  "rounded-lg border border-border bg-background px-3 text-base outline-none",
+  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive",
+);
 
 export type TextFieldProps = {
   label: string;
@@ -40,7 +48,7 @@ export function TextField({ label, value, onChange, placeholder, hint, error, in
         placeholder={placeholder}
         aria-invalid={error ? true : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className={CONTROL}
+        className={TEXT_INPUT}
       />
       <FieldError message={error} />
     </div>
@@ -67,7 +75,7 @@ export function TextAreaField({ label, value, onChange, placeholder, hint, error
         placeholder={placeholder}
         aria-invalid={error ? true : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(CONTROL, "h-auto py-3 leading-relaxed")}
+        className={cn(TEXT_INPUT, "h-auto py-3 leading-relaxed")}
       />
       <FieldError message={error} />
     </div>

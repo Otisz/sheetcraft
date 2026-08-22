@@ -10,11 +10,10 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { FieldError } from "@/features/dnd/creation/field-error";
-import type { PickerOption } from "@/features/dnd/creation/options";
+import { FieldError } from "@/features/dnd/content/field-error";
+import type { PickerOption } from "@/features/dnd/content/options";
 import type { Ref } from "@/features/dnd/db/schema";
-import type { HomebrewType } from "@/features/dnd/homebrew";
-import { cn } from "@/lib/utils";
+import { cn, THUMB_CONTROL } from "@/lib/utils";
 
 /**
  * One catalog picker. A bottom drawer rather than a `<select>`: the list is
@@ -36,14 +35,19 @@ export type PickerFieldProps = {
   /** Shown while the catalog read is in flight. */
   pending?: boolean;
   /**
-   * Which homebrew type the footer action authors. Omitted by a picker whose
-   * type is not authorable — the action is then absent rather than dead.
+   * Which homebrew type the footer action authors, as the route segment.
+   *
+   * A plain string rather than the `HomebrewType` union: this module sits
+   * below both features that use it, and importing the union to type one
+   * optional prop would put a picker → homebrew edge back where the cycle was.
+   * The route narrows the segment itself, so a wrong value redirects rather
+   * than rendering something broken.
+   *
+   * Omitted by a picker whose type is not authorable — the action is then
+   * absent rather than dead.
    */
-  authors?: HomebrewType;
+  authors?: string;
 };
-
-/** Field controls are thumb-height throughout the page. */
-const CONTROL = "h-12 w-full";
 
 function selectedName(options: PickerOption[], value: Ref | null): string | null {
   return options.find((one) => one.ref === value)?.name ?? null;
@@ -79,7 +83,7 @@ export function PickerField({
         size="lg"
         disabled={pending}
         aria-invalid={error ? true : undefined}
-        className={cn(CONTROL, "justify-between px-3 text-base font-normal")}
+        className={cn(THUMB_CONTROL, "justify-between px-3 text-base font-normal")}
         onClick={() => setOpen(true)}
       >
         <span className={cn("truncate", !chosen && "text-muted-foreground")}>
@@ -134,7 +138,7 @@ export function PickerField({
                 nativeButton={false}
                 variant="ghost"
                 size="lg"
-                className={cn(CONTROL, "text-base")}
+                className={cn(THUMB_CONTROL, "text-base")}
               >
                 <Plus />
                 Create homebrew…

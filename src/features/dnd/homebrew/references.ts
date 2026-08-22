@@ -3,7 +3,7 @@ import { getDb } from "@/features/dnd/db/db";
 import { refIndex, refSource } from "@/features/dnd/db/resolve-ref";
 import type { CharacterRecord, Ref } from "@/features/dnd/db/schema";
 import type { CharacterRefLocation, HomebrewType } from "@/features/dnd/homebrew/types";
-import { HOMEBREW_TYPES } from "@/features/dnd/homebrew/types";
+import { HOMEBREW_SPECS } from "@/features/dnd/homebrew/types";
 
 /**
  * Who is using a homebrew entry.
@@ -54,7 +54,7 @@ function refsAt(character: CharacterRecord, location: CharacterRefLocation): (Re
  * `homebrew:human` because somebody is a `catalog:human`.
  */
 function referencesEntry(character: CharacterRecord, type: HomebrewType, index: string): boolean {
-  return HOMEBREW_TYPES[type].referencedBy.some((location) =>
+  return HOMEBREW_SPECS[type].referencedBy.some((location) =>
     refsAt(character, location).some((ref) => refSource(ref) === "homebrew" && refIndex(ref) === index),
   );
 }
@@ -78,4 +78,30 @@ export async function charactersReferencing(
   return characters
     .filter((character) => referencesEntry(character, type, index))
     .map((character) => ({ id: character.id, name: character.name }));
+}
+
+/**
+ * Which table a parent index lives in.
+ *
+ * Upstream stores a parent WITHOUT a ref prefix — a subrace's `race.index` is
+ * `dwarf`, not `catalog:dwarf` — so the stored string genuinely cannot say
+ * which table it addresses. Loading an entry for editing has to look, or a
+ * homebrew subrace of a homebrew race opens with its parent silently blank.
+ *
+ * Homebrew wins a tie, because `catalog:human` and `homebrew:human` coexist
+ * and the homebrew one is what a homebrew entry most likely meant. A parent in
+ * neither table falls back to `catalog`; the picker then shows nothing
+ * selected, which is the truth.
+ */
+export async function parentSourceOf(
+  type: HomebrewType,
+  index: string,
+  db: SheetcraftDb = getDb(),
+): Promise<"catalog" | "homebrew"> {
+  if (index === "") {
+    return "catalog";
+  }
+
+  const found = await db.table(HOMEBREW_SPECS[type].table).get(index);
+  return found ? "homebrew" : "catalog";
 }

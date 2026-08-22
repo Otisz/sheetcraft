@@ -104,6 +104,17 @@ describe("saveHomebrewEntry — creating", () => {
     await expect(db.dnd_catalog_races.get("human")).resolves.toMatchObject({ name: "Human" });
   });
 
+  /**
+   * The JSON editor makes an `index` typeable, so it has to be unignorable:
+   * the id is assigned from the name, and honouring a pasted one would let
+   * someone hand-pick an id that collides with — or forks — an existing entry.
+   */
+  it("ignores an index supplied by the caller, assigning one from the name", async () => {
+    const result = await saveHomebrewEntry("subraces", { ...SUBRACE, index: "hand-picked" }, undefined, db);
+
+    expect(result.ok && result.entry.index).toBe("azure-dwarf");
+  });
+
   it("refuses an entry that fails its schema, storing nothing", async () => {
     const result = await saveHomebrewEntry("subraces", { index: "", name: "Broken" }, undefined, db);
 
@@ -157,6 +168,15 @@ describe("saveHomebrewEntry — editing", () => {
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.affected.map((one) => one.name)).toEqual(["Zephyr"]);
+  });
+
+  /** The same on an edit: a pasted index must not re-key or fork the entry. */
+  it("ignores an index pasted into the JSON while editing", async () => {
+    const result = await saveHomebrewEntry("subraces", { ...SUBRACE, index: "somewhere-else" }, "azure-dwarf", db);
+
+    expect(result.ok && result.entry.index).toBe("azure-dwarf");
+    await expect(getHomebrewEntry("subraces", "somewhere-else", db)).resolves.toBeUndefined();
+    await expect(db.dnd_homebrew_subraces.count()).resolves.toBe(1);
   });
 
   /**

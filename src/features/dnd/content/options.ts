@@ -5,7 +5,7 @@ import { refIndex } from "@/features/dnd/db/resolve-ref";
 import type { CatalogEntry, Ref } from "@/features/dnd/db/schema";
 
 /**
- * What the creation pickers offer: SRD first, then homebrew under an `HB`
+ * What the content pickers offer: SRD first, then homebrew under an `HB`
  * badge. Reading and ordering live here rather than in the components so the
  * grouping is testable without a browser. See ADR-0002.
  */

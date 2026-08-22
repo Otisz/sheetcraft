@@ -4,7 +4,7 @@ import {
   loadRaceOptions,
   loadSubclassOptions,
   loadSubraceOptions,
-} from "@/features/dnd/creation/options";
+} from "@/features/dnd/content/options";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { createTestDb, destroyTestDb } from "@/test/db";
 

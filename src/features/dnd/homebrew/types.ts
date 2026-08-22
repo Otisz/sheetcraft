@@ -26,8 +26,14 @@ export type HomebrewTypeSpec = {
   /** Plural, for group headings and counts. */
   plural: string;
   tier: AuthoringTier;
-  /** Measured leaf-field count, the number the tier was chosen from. */
-  leaves: number;
+  /**
+   * The leaf-field count the tier was chosen from, and whether that number is
+   * a measurement or a worst case. Kept as prose rather than a bare number
+   * because `subclass`'s 625 is a worst case over a variable-length schema
+   * while every other count is measured, and a surface rendering them
+   * identically would state the one as confidently as the other.
+   */
+  size: { leaves: number; worstCase?: true };
   /** The homebrew table this type is stored in. */
   table: TableName;
   /**
@@ -35,6 +41,12 @@ export type HomebrewTypeSpec = {
    * scan, so a type missing from here would be deletable while referenced.
    */
   referencedBy: readonly CharacterRefLocation[];
+  /**
+   * The type this one hangs off, for the two that have a parent. Named here
+   * rather than in the form, because loading an entry has to look the parent
+   * up to know which table it lives in — upstream stores it as a bare index.
+   */
+  parentType?: "races" | "classes";
 };
 
 /**
@@ -60,7 +72,7 @@ export const HOMEBREW_TYPES = {
     label: "Race",
     plural: "Races",
     tier: "form",
-    leaves: 49,
+    size: { leaves: 49 },
     table: "dnd_homebrew_races",
     referencedBy: ["raceRef"],
   },
@@ -68,15 +80,16 @@ export const HOMEBREW_TYPES = {
     label: "Subrace",
     plural: "Subraces",
     tier: "form",
-    leaves: 16,
+    size: { leaves: 16 },
     table: "dnd_homebrew_subraces",
     referencedBy: ["subraceRef"],
+    parentType: "races",
   },
   classes: {
     label: "Class",
     plural: "Classes",
     tier: "json",
-    leaves: 190,
+    size: { leaves: 190 },
     table: "dnd_homebrew_classes",
     referencedBy: ["classRef"],
   },
@@ -84,15 +97,16 @@ export const HOMEBREW_TYPES = {
     label: "Subclass",
     plural: "Subclasses",
     tier: "minimal-form",
-    leaves: 625,
+    size: { leaves: 625, worstCase: true },
     table: "dnd_homebrew_subclasses",
     referencedBy: ["subclassRef"],
+    parentType: "classes",
   },
   backgrounds: {
     label: "Background",
     plural: "Backgrounds",
     tier: "json",
-    leaves: 168,
+    size: { leaves: 168 },
     table: "dnd_homebrew_backgrounds",
     referencedBy: ["backgroundRef"],
   },
@@ -100,7 +114,7 @@ export const HOMEBREW_TYPES = {
     label: "Equipment",
     plural: "Equipment",
     tier: "form",
-    leaves: 15,
+    size: { leaves: 15 },
     table: "dnd_homebrew_equipment",
     referencedBy: ["equipment"],
   },
@@ -108,11 +122,22 @@ export const HOMEBREW_TYPES = {
     label: "Spell",
     plural: "Spells",
     tier: "form",
-    leaves: 32,
+    size: { leaves: 32 },
     table: "dnd_homebrew_spells",
     referencedBy: ["spells"],
   },
 } as const satisfies Record<string, HomebrewTypeSpec>;
+
+/**
+ * The specs, read through the declared shape.
+ *
+ * `as const satisfies` above keeps the KEYS literal — which is what makes
+ * `HomebrewType` a closed set — but it also narrows each value to its own
+ * literal type, so an optional field is invisible on the entries that omit it.
+ * Reading through this alias restores the declared shape without giving up the
+ * key inference.
+ */
+export const HOMEBREW_SPECS: Record<HomebrewType, HomebrewTypeSpec> = HOMEBREW_TYPES;
 
 /** The closed set of authorable type ids. */
 export type HomebrewType = keyof typeof HOMEBREW_TYPES;
@@ -131,6 +156,17 @@ export const HOMEBREW_TYPE_ORDER: readonly HomebrewType[] = [
   "equipment",
   "spells",
 ];
+
+/**
+ * An entry's display name, falling back to its index.
+ *
+ * The fallback is the point: an entry saved through the JSON editor without a
+ * `name` is still listable and still identifiable, and a blank row is one
+ * nobody can select to fix.
+ */
+export function entryName(entry: { index: string; name?: unknown }): string {
+  return typeof entry.name === "string" && entry.name !== "" ? entry.name : entry.index;
+}
 
 /** Narrows an arbitrary string — a URL segment — to a type id. */
 export function isHomebrewType(value: string): value is HomebrewType {

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "@/features/dnd/characters/queries";
-import { creationKeys } from "@/features/dnd/creation/queries";
+import { contentKeys } from "@/features/dnd/content";
 import type { HomebrewEntry } from "@/features/dnd/db/schema";
+import { parentSourceOf } from "@/features/dnd/homebrew/references";
 import type { DeleteResult, HomebrewGroup, SaveResult } from "@/features/dnd/homebrew/repository";
 import {
   deleteHomebrewEntry,
@@ -10,6 +11,7 @@ import {
   saveHomebrewEntry,
 } from "@/features/dnd/homebrew/repository";
 import type { HomebrewType } from "@/features/dnd/homebrew/types";
+import { HOMEBREW_SPECS } from "@/features/dnd/homebrew/types";
 
 /**
  * The query layer over the homebrew repository. Dexie is reached only from
@@ -25,6 +27,8 @@ export const homebrewKeys = {
   all: ["dnd", "homebrew"] as const,
   library: () => [...homebrewKeys.all, "library"] as const,
   one: (type: HomebrewType, index: string) => [...homebrewKeys.all, "one", type, index] as const,
+  /** The entry plus what loading it for editing needs beyond the row itself. */
+  forEditing: (type: HomebrewType, index: string) => [...homebrewKeys.all, "editing", type, index] as const,
 };
 
 export function useHomebrewLibrary() {
@@ -38,18 +42,23 @@ export function useHomebrewLibrary() {
  * One entry by type and index. `null` rather than `undefined` for a miss: a
  * bookmarked edit URL outlives the entry it names, and Query treats an
  * `undefined` return as a bug rather than as data.
+ *
+ * A blank index means the caller is creating rather than editing, and the
+ * query is disabled — there is nothing to look up, and firing the read anyway
+ * would put a permanent miss in the cache under a key that means "no entry".
  */
 export function useHomebrewEntry(type: HomebrewType, index: string) {
   return useQuery<HomebrewEntry | null>({
     queryKey: homebrewKeys.one(type, index),
     queryFn: () => getHomebrewEntry(type, index).then((one) => one ?? null),
+    enabled: index !== "",
   });
 }
 
 /**
  * Invalidates everything a homebrew write can have moved.
  *
- * The **creation keys** are in the list because the pickers read both tables
+ * The **content keys** are in the list because the pickers read both tables
  * — a new race that does not appear in the picker until a reload is a race the
  * author concludes did not save. The **character keys** are there because an
  * edit applies live: a character referencing the entry derives differently the
@@ -60,9 +69,46 @@ function useInvalidateAfterWrite() {
 
   return () => {
     void queryClient.invalidateQueries({ queryKey: homebrewKeys.all });
-    void queryClient.invalidateQueries({ queryKey: creationKeys.all });
+    void queryClient.invalidateQueries({ queryKey: contentKeys.all });
     void queryClient.invalidateQueries({ queryKey: characterKeys.all });
   };
+}
+
+/**
+ * An entry loaded for editing: the row, plus which table its parent lives in.
+ *
+ * The parent source is not on the row and cannot be — upstream stores a parent
+ * as a bare index, so the string alone cannot say which table it addresses.
+ * Resolving it here means the form opens with the parent actually selected,
+ * including the homebrew-subrace-of-a-homebrew-race case.
+ */
+export type EntryForEditing = {
+  entry: HomebrewEntry;
+  parentSource: "catalog" | "homebrew";
+};
+
+export function useHomebrewEntryForEditing(type: HomebrewType, index: string) {
+  return useQuery<EntryForEditing | null>({
+    queryKey: homebrewKeys.forEditing(type, index),
+    queryFn: async () => {
+      const entry = await getHomebrewEntry(type, index);
+      if (!entry) {
+        return null;
+      }
+
+      const parentType = HOMEBREW_SPECS[type].parentType;
+      if (!parentType) {
+        return { entry, parentSource: "catalog" };
+      }
+
+      const parentIndex = (entry[parentType === "races" ? "race" : "class"] as { index?: unknown } | undefined)?.index;
+      return {
+        entry,
+        parentSource: await parentSourceOf(parentType, typeof parentIndex === "string" ? parentIndex : ""),
+      };
+    },
+    enabled: index !== "",
+  });
 }
 
 export type SaveVariables = {

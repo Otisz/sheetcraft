@@ -2,6 +2,14 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Minus, Plus } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  FieldError,
+  PickerField,
+  useClassOptions,
+  useRaceOptions,
+  useSubclassOptions,
+  useSubraceOptions,
+} from "@/features/dnd/content";
 import { AbilitiesField } from "@/features/dnd/creation/abilities-field";
 import {
   buildCreateInput,
@@ -17,19 +25,10 @@ import {
   setRace,
   showsSubclass,
 } from "@/features/dnd/creation/draft";
-import { FieldError } from "@/features/dnd/creation/field-error";
-import { PickerField } from "@/features/dnd/creation/picker-field";
-import {
-  useClassOptions,
-  useCreateCharacter,
-  useRaceOptions,
-  useSubclassLevel,
-  useSubclassOptions,
-  useSubraceOptions,
-} from "@/features/dnd/creation/queries";
+import { useCreateCharacter, useSubclassLevel } from "@/features/dnd/creation/queries";
 import { floatingBonusChoices, racialModifiers, toRacialSource } from "@/features/dnd/creation/racial-bonuses";
 import { ABILITIES, type Abil } from "@/features/dnd/db/schema";
-import { cn } from "@/lib/utils";
+import { cn, THUMB_CONTROL } from "@/lib/utils";
 
 /**
  * Character creation: a SINGLE SCROLLING PAGE, not a wizard. It asks for name,
@@ -41,8 +40,6 @@ import { cn } from "@/lib/utils";
  * the surface. There are deliberately NO balance warnings — mechanical sanity
  * is the table's business, not the app's.
  */
-
-const CONTROL = "h-12 w-full";
 
 export function CreateCharacterForm() {
   const navigate = useNavigate();
@@ -141,7 +138,7 @@ export function CreateCharacterForm() {
             placeholder="Bruenor"
             aria-invalid={issueFor("name") ? true : undefined}
             className={cn(
-              CONTROL,
+              THUMB_CONTROL,
               "rounded-lg border border-border bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive",
             )}
           />
@@ -291,7 +288,7 @@ function LevelField({ level, error, onChange }: { level: number; error?: string;
           onChange={(event) => onChange(Number(event.target.value))}
           aria-invalid={error ? true : undefined}
           className={cn(
-            CONTROL,
+            THUMB_CONTROL,
             "min-w-0 flex-1 rounded-lg border border-border bg-background text-center text-base tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive",
           )}
         />

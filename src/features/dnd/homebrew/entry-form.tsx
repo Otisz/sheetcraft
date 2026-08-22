@@ -1,5 +1,4 @@
-import { PickerField } from "@/features/dnd/creation/picker-field";
-import { useClassOptions, useRaceOptions } from "@/features/dnd/creation/queries";
+import { PickerField, useClassOptions, useRaceOptions } from "@/features/dnd/content";
 import { ABILITIES, type Abil } from "@/features/dnd/db/schema";
 import type { FormDraft } from "@/features/dnd/homebrew/drafts";
 import { FieldSection, SwitchField, TextAreaField, TextField } from "@/features/dnd/homebrew/fields";
@@ -313,6 +312,18 @@ function SpellFields({ draft, set }: { draft: FormDraft; set: Setter }) {
  * because the SRD has exactly one subclass per class and that is close to
  * unusable at a real table. Anything this cannot express is written in the
  * JSON editor, which accepts the same type.
+ *
+ * NO MODIFIER RECORDS, despite
+ * [#165](https://github.com/Otisz/sheetcraft/issues/165) naming them. They
+ * have nowhere to go: a modifier lives on the CHARACTER record, and every
+ * vendored catalog schema is a `z.strictObject` with no modifier field — so an
+ * entry carrying one fails validation, which is the same ticket's "entries
+ * conform to the same schema as catalog entries" and "schema-valid is valid".
+ *
+ * A subclass's numeric effects are therefore added on the character that takes
+ * it, where every other modifier already lives and where the toggle the sheet
+ * offers actually applies. Giving homebrew entries a modifier field of their
+ * own is a schema change, not a form change — see the ticket thread.
  */
 function SubclassFields({
   draft,

@@ -18,6 +18,12 @@ export {
 } from "@/features/dnd/homebrew/repository";
 export { slugify, uniqueSlug } from "@/features/dnd/homebrew/slug";
 export type { AuthoringTier, HomebrewType } from "@/features/dnd/homebrew/types";
-export { HOMEBREW_TYPE_ORDER, HOMEBREW_TYPES, isHomebrewType } from "@/features/dnd/homebrew/types";
+export {
+  entryName,
+  HOMEBREW_SPECS,
+  HOMEBREW_TYPE_ORDER,
+  HOMEBREW_TYPES,
+  isHomebrewType,
+} from "@/features/dnd/homebrew/types";
 export type { ValidationIssue, ValidationResult } from "@/features/dnd/homebrew/validate";
 export { parseHomebrewJson, validateEntry } from "@/features/dnd/homebrew/validate";

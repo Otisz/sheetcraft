@@ -16,9 +16,9 @@ import type { FormDraft } from "@/features/dnd/homebrew/drafts";
 import { buildCandidate, draftFromEntry, emptyFormDraft } from "@/features/dnd/homebrew/drafts";
 import { EntryForm } from "@/features/dnd/homebrew/entry-form";
 import { IssueList, JsonEditor } from "@/features/dnd/homebrew/json-editor";
-import { useDeleteHomebrew, useHomebrewEntry, useSaveHomebrew } from "@/features/dnd/homebrew/queries";
+import { useDeleteHomebrew, useHomebrewEntryForEditing, useSaveHomebrew } from "@/features/dnd/homebrew/queries";
 import type { ReferencingCharacter } from "@/features/dnd/homebrew/references";
-import { HOMEBREW_TYPES, type HomebrewType } from "@/features/dnd/homebrew/types";
+import { entryName, HOMEBREW_SPECS, type HomebrewType } from "@/features/dnd/homebrew/types";
 import type { ValidationIssue } from "@/features/dnd/homebrew/validate";
 import { parseHomebrewJson } from "@/features/dnd/homebrew/validate";
 import { cn, THUMB_ACTION } from "@/lib/utils";
@@ -38,11 +38,12 @@ type Mode = "form" | "json";
 
 export function HomebrewEditor({ type, index }: { type: HomebrewType; index?: string }) {
   // An edit reads the entry first; a create has nothing to read. The hook is
-  // called either way and simply disabled, because hooks are not conditional.
-  const existing = useHomebrewEntry(type, index ?? "");
+  // called either way — hooks are not conditional — and disables itself on the
+  // blank index a create passes.
+  const existing = useHomebrewEntryForEditing(type, index ?? "");
 
   if (index === undefined) {
-    return <Editor type={type} entry={null} />;
+    return <Editor type={type} entry={null} parentSource="catalog" />;
   }
 
   if (existing.isPending) {
@@ -53,11 +54,20 @@ export function HomebrewEditor({ type, index }: { type: HomebrewType; index?: st
     return <NotFound type={type} />;
   }
 
-  return <Editor type={type} entry={existing.data} />;
+  return <Editor type={type} entry={existing.data.entry} parentSource={existing.data.parentSource} />;
 }
 
-function Editor({ type, entry }: { type: HomebrewType; entry: HomebrewEntry | null }) {
-  const spec = HOMEBREW_TYPES[type];
+function Editor({
+  type,
+  entry,
+  parentSource,
+}: {
+  type: HomebrewType;
+  entry: HomebrewEntry | null;
+  /** Which table the loaded entry's parent lives in. See `useHomebrewEntryForEditing`. */
+  parentSource: "catalog" | "homebrew";
+}) {
+  const spec = HOMEBREW_SPECS[type];
   const navigate = useNavigate();
   const save = useSaveHomebrew();
   const editing = entry !== null;
@@ -69,7 +79,9 @@ function Editor({ type, entry }: { type: HomebrewType; entry: HomebrewEntry | nu
    */
   const [mode, setMode] = useState<Mode>(spec.tier === "json" ? "json" : "form");
 
-  const [draft, setDraft] = useState<FormDraft>(() => (entry ? draftFromEntry(type, entry) : emptyFormDraft(type)));
+  const [draft, setDraft] = useState<FormDraft>(() =>
+    entry ? draftFromEntry(type, entry, parentSource) : emptyFormDraft(),
+  );
   /**
    * The JSON buffer, seeded from the stored entry rather than from the draft:
    * an edit must open showing what is actually stored, including the fields
@@ -138,7 +150,7 @@ function Editor({ type, entry }: { type: HomebrewType; entry: HomebrewEntry | nu
 
       <div className="flex flex-col gap-6 px-4 pb-32">
         {spec.tier === "json" ? (
-          <JsonOnlyNote label={spec.plural} leaves={spec.leaves} />
+          <JsonOnlyNote label={spec.plural} leaves={spec.size.leaves} />
         ) : (
           <ModeToggle mode={mode} onChange={setMode} />
         )}
@@ -250,7 +262,7 @@ function DeleteAction({ type, entry }: { type: HomebrewType; entry: HomebrewEntr
       <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle className="truncate">{blockedBy ? "Still in use" : `Delete ${nameOf(entry)}?`}</DrawerTitle>
+            <DrawerTitle className="truncate">{blockedBy ? "Still in use" : `Delete ${entryName(entry)}?`}</DrawerTitle>
             <DrawerDescription>
               {blockedBy
                 ? "Change or remove it on these characters first, then delete it."
@@ -357,10 +369,6 @@ function AffectedDrawer({ affected, onClose }: { affected: ReferencingCharacter[
   );
 }
 
-function nameOf(entry: HomebrewEntry): string {
-  return typeof entry.name === "string" && entry.name !== "" ? entry.name : entry.index;
-}
-
 function Pending() {
   return (
     <output aria-live="polite" className="flex min-h-dvh items-center justify-center p-8">
@@ -376,7 +384,7 @@ function Pending() {
 function NotFound({ type }: { type: HomebrewType }) {
   return (
     <div role="alert" className="flex min-h-dvh flex-col items-center justify-center gap-4 p-8 text-center">
-      <p className="text-lg font-medium">That {HOMEBREW_TYPES[type].label.toLowerCase()} is not here.</p>
+      <p className="text-lg font-medium">That {HOMEBREW_SPECS[type].label.toLowerCase()} is not here.</p>
       <p className="max-w-prose text-sm text-muted-foreground">It may have been deleted on this device.</p>
       <Button render={<Link to="/dnd/homebrew" />} nativeButton={false}>
         Back to homebrew

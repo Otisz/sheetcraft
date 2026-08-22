@@ -1,6 +1,7 @@
 import { Minus, Plus } from "lucide-react";
 import { useId } from "react";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/features/dnd/content";
 import {
   type AbilityDraft,
   type AbilityMethod,
@@ -11,7 +12,6 @@ import {
   pointBuyRemaining,
   remainingArrayValues,
 } from "@/features/dnd/creation/abilities";
-import { FieldError } from "@/features/dnd/creation/field-error";
 import { ABILITIES, type Abil, type Modifier } from "@/features/dnd/db/schema";
 import { cn } from "@/lib/utils";
 

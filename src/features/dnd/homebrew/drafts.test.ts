@@ -10,16 +10,18 @@ import { validateEntry } from "@/features/dnd/homebrew/validate";
  */
 
 describe("emptyFormDraft", () => {
-  it.each(["races", "subraces", "equipment", "spells", "subclasses"] as const)(
-    "starts %s blank rather than pre-filled",
-    (type) => {
-      expect(emptyFormDraft(type).name).toBe("");
-    },
-  );
+  it("starts blank rather than pre-filled", () => {
+    expect(emptyFormDraft().name).toBe("");
+  });
+
+  /** `gp` is the one pre-filled value, and it is a chore rather than a choice. */
+  it("pre-fills only the cost unit", () => {
+    expect(emptyFormDraft().costUnit).toBe("gp");
+  });
 });
 
 describe("buildCandidate — races", () => {
-  const filled: FormDraft = { ...emptyFormDraft("races"), name: "Azureborn", speed: "30", size: "Medium" };
+  const filled: FormDraft = { ...emptyFormDraft(), name: "Azureborn", speed: "30", size: "Medium" };
 
   it("builds an entry its schema accepts", () => {
     expect(validateEntry("races", { ...buildCandidate("races", filled), index: "azureborn" }).ok).toBe(true);
@@ -65,7 +67,7 @@ describe("buildCandidate — races", () => {
 
 describe("buildCandidate — subraces", () => {
   const filled: FormDraft = {
-    ...emptyFormDraft("subraces"),
+    ...emptyFormDraft(),
     name: "Azure Dwarf",
     parentRef: "catalog:dwarf",
     parentName: "Dwarf",
@@ -92,7 +94,7 @@ describe("buildCandidate — subraces", () => {
 });
 
 describe("buildCandidate — equipment", () => {
-  const filled: FormDraft = { ...emptyFormDraft("equipment"), name: "Sunblade", costQuantity: "50", costUnit: "gp" };
+  const filled: FormDraft = { ...emptyFormDraft(), name: "Sunblade", costQuantity: "50", costUnit: "gp" };
 
   it("builds an entry its schema accepts", () => {
     expect(validateEntry("equipment", { ...buildCandidate("equipment", filled), index: "sunblade" }).ok).toBe(true);
@@ -119,7 +121,7 @@ describe("buildCandidate — equipment", () => {
 
 describe("buildCandidate — spells", () => {
   const filled: FormDraft = {
-    ...emptyFormDraft("spells"),
+    ...emptyFormDraft(),
     name: "Starfall",
     desc: "Stars fall.",
     level: "3",
@@ -160,7 +162,7 @@ describe("buildCandidate — spells", () => {
 
 describe("buildCandidate — subclasses (minimal form)", () => {
   const filled: FormDraft = {
-    ...emptyFormDraft("subclasses"),
+    ...emptyFormDraft(),
     name: "Storm Herald",
     parentRef: "catalog:barbarian",
     parentName: "Barbarian",
@@ -300,5 +302,17 @@ describe("draftFromEntry", () => {
     });
 
     expect(draft.parentRef).toBe("catalog:dwarf");
+  });
+});
+
+/**
+ * The JSON-only types have no form, and `buildCandidate` says so rather than
+ * producing a candidate no schema accepts. The editor never reaches this — it
+ * pins those types to the JSON surface — so the throw is a guard on the seam,
+ * not a path the UI walks.
+ */
+describe("buildCandidate — the types with no form", () => {
+  it.each(["classes", "backgrounds"] as const)("refuses to build a %s from a form draft", (type) => {
+    expect(() => buildCandidate(type, emptyFormDraft())).toThrow(/authored as JSON/);
   });
 });

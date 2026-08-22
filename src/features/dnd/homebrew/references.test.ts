@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "@/features/dnd/db/characters-repository";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import type { Ref } from "@/features/dnd/db/schema";
-import { charactersReferencing } from "@/features/dnd/homebrew/references";
+import { charactersReferencing, parentSourceOf } from "@/features/dnd/homebrew/references";
 import { createTestDb, destroyTestDb } from "@/test/db";
 
 let db: SheetcraftDb;
@@ -112,5 +112,41 @@ describe("charactersReferencing", () => {
     });
 
     await expect(charactersReferencing("spells", "starfall", db)).resolves.toHaveLength(1);
+  });
+});
+
+describe("parentSourceOf", () => {
+  it("says homebrew when the parent is a homebrew entry", async () => {
+    await db.dnd_homebrew_races.put({ index: "azureborn", name: "Azureborn", updatedAt: new Date() });
+
+    await expect(parentSourceOf("races", "azureborn", db)).resolves.toBe("homebrew");
+  });
+
+  it("says catalog when the parent is an SRD entry", async () => {
+    await db.dnd_catalog_races.put({ index: "dwarf", name: "Dwarf" });
+
+    await expect(parentSourceOf("races", "dwarf", db)).resolves.toBe("catalog");
+  });
+
+  /**
+   * Both tables can hold the index — `catalog:human` and `homebrew:human`
+   * coexist. Homebrew wins, because a homebrew subrace of a homebrew race is
+   * the case the author is most likely to have meant, and the picker shows the
+   * choice either way.
+   */
+  it("prefers homebrew when both tables hold the index", async () => {
+    await db.dnd_catalog_races.put({ index: "human", name: "Human" });
+    await db.dnd_homebrew_races.put({ index: "human", name: "Human", updatedAt: new Date() });
+
+    await expect(parentSourceOf("races", "human", db)).resolves.toBe("homebrew");
+  });
+
+  /** A parent in neither table falls back to catalog, which is where most live. */
+  it("falls back to catalog for an index in neither table", async () => {
+    await expect(parentSourceOf("races", "gone", db)).resolves.toBe("catalog");
+  });
+
+  it("falls back to catalog for a blank index", async () => {
+    await expect(parentSourceOf("races", "", db)).resolves.toBe("catalog");
   });
 });

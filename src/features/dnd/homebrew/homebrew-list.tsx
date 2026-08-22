@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHomebrewLibrary } from "@/features/dnd/homebrew/queries";
 import type { HomebrewGroup } from "@/features/dnd/homebrew/repository";
-import { HOMEBREW_TYPES } from "@/features/dnd/homebrew/types";
+import { entryName, HOMEBREW_SPECS } from "@/features/dnd/homebrew/types";
 import { THUMB_ACTION } from "@/lib/utils";
 
 /**
@@ -60,7 +60,7 @@ export function HomebrewList() {
  * beats picking it from a drawer after the fact.
  */
 function TypeGroup({ group }: { group: HomebrewGroup }) {
-  const spec = HOMEBREW_TYPES[group.type];
+  const spec = HOMEBREW_SPECS[group.type];
 
   return (
     <section className="flex flex-col gap-2">
@@ -82,7 +82,7 @@ function TypeGroup({ group }: { group: HomebrewGroup }) {
                 className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 active:bg-muted"
               >
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{nameOf(entry.name, entry.index)}</span>
+                  <span className="truncate font-medium">{entryName(entry)}</span>
                   <span className="truncate text-sm text-muted-foreground">homebrew:{entry.index}</span>
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
@@ -117,11 +117,6 @@ function TierNote({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   );
-}
-
-/** Falls back to the index: an entry saved without a name is still identifiable. */
-function nameOf(name: unknown, index: string): string {
-  return typeof name === "string" && name !== "" ? name : index;
 }
 
 function Pending() {
