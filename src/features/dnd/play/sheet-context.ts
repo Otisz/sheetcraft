@@ -15,9 +15,16 @@
 
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
-import { resolveRef } from "@/features/dnd/db/resolve-ref";
-import { ABILITIES, type Abil, type CatalogEntry, type CharacterRecord, type Ref } from "@/features/dnd/db/schema";
-import type { DeriveContext, EquippedArmor, Skill } from "@/features/dnd/derive";
+import { refIndex, resolveRef } from "@/features/dnd/db/resolve-ref";
+import {
+  ABILITIES,
+  type Abil,
+  type CatalogEntry,
+  type CharacterRecord,
+  type Ref,
+  type SpellSlotLevel,
+} from "@/features/dnd/db/schema";
+import type { DeriveContext, EquippedArmor, Skill, SlotsByLevel, Weapon } from "@/features/dnd/derive";
 import { DEFAULT_SPEED, SKILLS } from "@/features/dnd/derive";
 
 /** The SRD's own category string for a shield. Every other value is body armor. */
@@ -76,6 +83,195 @@ async function loadArmor(character: CharacterRecord, db: SheetcraftDb): Promise<
 
   return resolved.filter((armor): armor is EquippedArmor => armor !== null);
 }
+
+/** The SRD's own category index for a weapon. Everything else is gear. */
+const WEAPON_CATEGORY = "weapon";
+
+/** The SRD's own `weapon_range` value for a ranged weapon. */
+const RANGED = "Ranged";
+
+/** The SRD's own property index for finesse. PHB p.195. */
+const FINESSE = "finesse";
+
+/** One equipment entry's weapon block, exactly as the SRD stores it. */
+type WeaponRow = {
+  equipment_category?: { index?: unknown };
+  weapon_range?: unknown;
+  damage?: { damage_dice?: unknown; damage_type?: { name?: unknown } };
+  properties?: { index?: unknown }[];
+};
+
+/**
+ * Narrows a catalog row to a weapon, or `null` if it is not one.
+ *
+ * Every read is from a *structural* field — the category index, the range
+ * string, the properties array — never from the name, for the same reason
+ * armor reads `armor_category`: a homebrew dagger called "Fang" is still a
+ * finesse weapon, and a longsword called "Dagger of Kings" is not.
+ *
+ * `proficient` is decided by the caller, which is the only party that knows the
+ * character's proficiency list.
+ */
+function toWeapon(entry: CatalogEntry, proficient: boolean): Weapon | null {
+  const row = entry as WeaponRow;
+  if (row.equipment_category?.index !== WEAPON_CATEGORY) {
+    return null;
+  }
+
+  const damageDice = row.damage?.damage_dice;
+  const damageType = row.damage?.damage_type?.name;
+
+  return {
+    index: entry.index,
+    name: typeof entry.name === "string" ? entry.name : entry.index,
+    // A weapon with no damage block is not an error — the SRD's net has none.
+    // An empty string renders as a bare modifier, which is what it is.
+    damageDice: typeof damageDice === "string" ? damageDice : "",
+    damageType: typeof damageType === "string" ? damageType : "",
+    finesse: (row.properties ?? []).some((property) => property.index === FINESSE),
+    ranged: row.weapon_range === RANGED,
+    proficient,
+  };
+}
+
+/**
+ * The weapon indices the character is proficient with, expanded from the
+ * proficiency refs they store.
+ *
+ * The upstream shape is the whole difficulty here, and it is not the obvious
+ * one. A proficiency row carries a **singular `reference`**, which points at
+ * one of two different tables depending on what kind of proficiency it is:
+ *
+ * - a *category* (`martial-weapons`) references an **equipment category**,
+ *   whose `equipment` array is the only place upstream lists the 23 weapons it
+ *   covers;
+ * - a *named* proficiency (`longswords`) references the **equipment** entry
+ *   directly.
+ *
+ * Which table is settled by the reference's own `url`, not guessed at. The
+ * plural `references` array a reasonable person would reach for is present on
+ * every row and **empty on all 117** — reading it matches nothing, and does so
+ * silently, which costs a proficient barbarian their +2 to hit.
+ *
+ * Expanding through the catalog rather than hardcoding a category table is what
+ * keeps this correct across a re-pin: the weapon list moves upstream, not here.
+ */
+async function loadWeaponProficiencies(character: CharacterRecord, db: SheetcraftDb): Promise<Set<string>> {
+  const resolved = await Promise.all(
+    character.proficiencies.weapons.map(async (ref) => {
+      const resolution = await resolveRef("proficiencies", ref, db);
+      if (!resolution.found) {
+        return [];
+      }
+
+      const reference = resolution.entry.reference as { index?: unknown; url?: unknown } | undefined;
+      if (typeof reference?.index !== "string") {
+        return [];
+      }
+
+      if (typeof reference.url === "string" && reference.url.includes(EQUIPMENT_CATEGORY_PATH)) {
+        const category = await db.dnd_catalog_equipment_categories.get(reference.index);
+        const equipment = (category?.equipment as { index?: unknown }[] | undefined) ?? [];
+        return equipment.map((entry) => entry.index).filter((index) => typeof index === "string");
+      }
+
+      // Not a category, so the reference names one weapon outright.
+      return [reference.index];
+    }),
+  );
+
+  return new Set(resolved.flat());
+}
+
+/** The URL segment that marks a proficiency's reference as an equipment category. */
+const EQUIPMENT_CATEGORY_PATH = "/equipment-categories/";
+
+/**
+ * Every weapon the character carries, equipped or not.
+ *
+ * Unlike armor this deliberately ignores `equipped`: a sheathed sword is still
+ * something you can attack with, and hiding it until the player toggles a flag
+ * would make the Combat tab lie about what is in their hands.
+ */
+async function loadWeapons(character: CharacterRecord, db: SheetcraftDb): Promise<Weapon[]> {
+  const proficientWith = await loadWeaponProficiencies(character, db);
+
+  const resolved = await Promise.all(
+    character.equipment.map(async (entry) => {
+      const resolution = await resolveRef("equipment", entry.itemRef, db);
+      return resolution.found ? toWeapon(resolution.entry, proficientWith.has(resolution.index)) : null;
+    }),
+  );
+
+  return resolved.filter((weapon): weapon is Weapon => weapon !== null);
+}
+
+/** The class's hit die, or `undefined` when the ref dangles so the engine falls back. */
+async function loadHitDie(character: CharacterRecord, db: SheetcraftDb): Promise<number | undefined> {
+  const resolution = await resolveRef("classes", character.classRef, db);
+  if (!resolution.found || typeof resolution.entry.hit_die !== "number") {
+    return undefined;
+  }
+
+  return resolution.entry.hit_die;
+}
+
+/** One level row's spellcasting block, exactly as the SRD stores it. */
+type SpellcastingRow = {
+  cantrips_known?: unknown;
+  [key: string]: unknown;
+};
+
+/** What the level row contributes: the slot maxima and the cantrip count. */
+type LevelSpellcasting = {
+  slotsByLevel?: SlotsByLevel;
+  cantripsKnown: number;
+};
+
+/**
+ * The slot table for this character's class and level.
+ *
+ * The level row's `index` is `<class>-<level>`, which is the compound key
+ * upstream uses and therefore the one looked up here — a `[class+level]` index
+ * exists on the table, but the id is exact and a `get` beats a range query.
+ *
+ * Zero-valued levels are dropped rather than carried: the SRD stores explicit
+ * zeroes for every level a caster has no slots in, and a row reading "0 / 0" is
+ * noise on a phone. `slotsByLevel` is left absent when nothing survives, which
+ * is how a non-caster and a caster with no slots yet come out the same.
+ */
+async function loadLevelSpellcasting(character: CharacterRecord, db: SheetcraftDb): Promise<LevelSpellcasting> {
+  const classIndex = refIndex(character.classRef);
+  if (!classIndex) {
+    return { cantripsKnown: 0 };
+  }
+
+  const row = (await db.dnd_catalog_levels.get(`${classIndex}-${character.level}`)) as
+    | { spellcasting?: SpellcastingRow }
+    | undefined;
+  const spellcasting = row?.spellcasting;
+  if (!spellcasting) {
+    return { cantripsKnown: 0 };
+  }
+
+  const slotsByLevel: SlotsByLevel = {};
+  for (const slotLevel of SPELL_SLOT_LEVELS) {
+    const count = spellcasting[`spell_slots_level_${slotLevel}`];
+    if (typeof count === "number" && count > 0) {
+      slotsByLevel[slotLevel] = count;
+    }
+  }
+
+  const cantripsKnown = spellcasting.cantrips_known;
+
+  return {
+    ...(Object.keys(slotsByLevel).length > 0 ? { slotsByLevel } : {}),
+    cantripsKnown: typeof cantripsKnown === "number" ? cantripsKnown : 0,
+  };
+}
+
+/** The nine slot levels, ascending. */
+const SPELL_SLOT_LEVELS: SpellSlotLevel[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 function isAbil(value: unknown): value is Abil {
   return typeof value === "string" && (ABILITIES as readonly string[]).includes(value);
@@ -141,13 +337,30 @@ export async function loadDeriveContext(
   character: CharacterRecord,
   db: SheetcraftDb = getDb(),
 ): Promise<DeriveContext> {
-  const [armor, spellcastingAbility, speed, skillProficiencies, expertise] = await Promise.all([
-    loadArmor(character, db),
-    loadSpellcastingAbility(character, db),
-    loadSpeed(character, db),
-    loadSkills(character.proficiencies.skills, db),
-    loadSkills(character.proficiencies.expertise, db),
-  ]);
+  const [armor, spellcastingAbility, speed, skillProficiencies, expertise, hitDie, weapons, levelSpellcasting] =
+    await Promise.all([
+      loadArmor(character, db),
+      loadSpellcastingAbility(character, db),
+      loadSpeed(character, db),
+      loadSkills(character.proficiencies.skills, db),
+      loadSkills(character.proficiencies.expertise, db),
+      loadHitDie(character, db),
+      loadWeapons(character, db),
+      loadLevelSpellcasting(character, db),
+    ]);
 
-  return { armor, spellcastingAbility, speed, skillProficiencies, expertise };
+  return {
+    armor,
+    spellcastingAbility,
+    speed,
+    skillProficiencies,
+    expertise,
+    weapons,
+    cantripsKnown: levelSpellcasting.cantripsKnown,
+    // Both spread rather than assigned: absent is the signal the engine falls
+    // back on, and writing `hitDie: undefined` would be equivalent today but is
+    // exactly what a later `?? 0` tidy-up turns into a wrong number.
+    ...(hitDie === undefined ? {} : { hitDie }),
+    ...(levelSpellcasting.slotsByLevel ? { slotsByLevel: levelSpellcasting.slotsByLevel } : {}),
+  };
 }

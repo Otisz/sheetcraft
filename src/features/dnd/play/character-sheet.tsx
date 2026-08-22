@@ -17,9 +17,11 @@ import { derive } from "@/features/dnd/derive";
 import type { DeathSaves } from "@/features/dnd/play/death-saves";
 import { activeOverrides, clearOverride } from "@/features/dnd/play/effects";
 import { EffectsRow } from "@/features/dnd/play/effects-row";
+import { signed } from "@/features/dnd/play/format";
 import type { HpPool } from "@/features/dnd/play/hp";
 import { HpSection } from "@/features/dnd/play/hp-row";
 import { useDeriveContext, useUpdateModifiers, useUpdatePlay } from "@/features/dnd/play/queries";
+import { SheetTabs } from "@/features/dnd/play/sheet-tabs";
 import { cn, THUMB_ACTION } from "@/lib/utils";
 
 /**
@@ -114,6 +116,13 @@ function SheetBody({
         onModifiersChange={(modifiers) => onModifiersChange({ id: character.id, modifiers })}
         onConditionsChange={(conditions: Ref[]) => writePlay({ conditions })}
       />
+
+      {/*
+        Everything above stays on screen; the six tabs below are where the rest
+        of the record lives. HP and the effects row are never a tap away — that
+        is the split #164 was designed around.
+      */}
+      <SheetTabs character={character} derived={derived} onPlayChange={writePlay} />
     </div>
   );
 }
@@ -279,11 +288,6 @@ function Abilities({ derived }: { derived: Derived }) {
       ))}
     </section>
   );
-}
-
-/** A modifier reads `+3` or `−1`; a bare `3` is ambiguous on a character sheet. */
-function signed(value: number): string {
-  return value >= 0 ? `+${value}` : String(value);
 }
 
 function SheetFailed({ onRetry }: { onRetry: () => void }) {
