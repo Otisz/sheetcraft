@@ -7,9 +7,15 @@
  * acceptance criterion the six tabs exist to satisfy, and a criterion nothing
  * checks is one a later field silently breaks. See #164.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeCharacter } from "@/features/dnd/derive/fixtures";
-import { CHARACTER_FIELD_HOMES, currencyRows, SHEET_TABS, tabForField } from "@/features/dnd/play/tabs";
+import { CHARACTER_FIELD_HOMES, currencyRows, homeForField, SHEET_TABS, tabForField } from "@/features/dnd/play/tabs";
+
+/** The components live beside this test; `import.meta.url` keeps that literal. */
+const PLAY_DIR = dirname(fileURLToPath(import.meta.url));
 
 describe("the six tabs", () => {
   it("has exactly six", () => {
@@ -39,6 +45,30 @@ describe("field coverage", () => {
     expect(tabForField(field)).not.toBeUndefined();
   });
 
+  /**
+   * The components the sheet actually defines, read off the source rather than
+   * listed here. Reading the files is the whole point: a `renderedBy` naming a
+   * component nobody wrote would otherwise satisfy the coverage claim exactly
+   * as a bare tab name did, which is the bug this test was rewritten to catch.
+   */
+  const definedComponents = new Set(
+    readdirSync(PLAY_DIR)
+      .filter((file) => file.endsWith(".tsx"))
+      .flatMap((file) => {
+        const source = readFileSync(join(PLAY_DIR, file), "utf8");
+        return [...source.matchAll(/(?:export\s+)?function\s+([A-Z]\w*)/g)].map((match) => match[1]);
+      }),
+  );
+
+  it.each([...recordFields, ...playFields, ...proficiencyFields])("%s is rendered by something", (field) => {
+    const home = homeForField(field);
+
+    expect(home?.renderedBy).toBeTruthy();
+    // A home is a promise that the player can see the field. Naming the
+    // component that keeps the promise is what makes the promise checkable.
+    expect(definedComponents).toContain(home?.renderedBy);
+  });
+
   it("claims no field the record does not have", () => {
     const actual = new Set([...recordFields, ...playFields, ...proficiencyFields]);
 
@@ -48,7 +78,11 @@ describe("field coverage", () => {
   it("names a real tab for every field it places", () => {
     const tabIds = new Set<string>(SHEET_TABS.map((tab) => tab.id));
 
-    expect(Object.values(CHARACTER_FIELD_HOMES).filter((home) => home !== "header" && !tabIds.has(home))).toEqual([]);
+    expect(
+      Object.values(CHARACTER_FIELD_HOMES)
+        .map((home) => home.tab)
+        .filter((tab) => tab !== "header" && !tabIds.has(tab)),
+    ).toEqual([]);
   });
 
   it("puts saving throws on the Skills tab rather than on the main scroll", () => {

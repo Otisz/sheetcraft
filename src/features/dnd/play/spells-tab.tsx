@@ -2,7 +2,7 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SpellSlotLevel } from "@/features/dnd/db/schema";
 import type { Derived, SpellSlotPool } from "@/features/dnd/derive";
-import { signed, unknownRefLabel } from "@/features/dnd/play/format";
+import { nameFor, signed } from "@/features/dnd/play/format";
 import type { SpellSection } from "@/features/dnd/play/sections";
 import type { TabData } from "@/features/dnd/play/tab-data";
 
@@ -152,9 +152,7 @@ function SpellList({ section, names }: { section: SpellSection; names: TabData["
         <ul className="flex flex-col gap-1.5">
           {section.spells.map((spell) => (
             <li key={spell.ref} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {names[spell.ref] ?? unknownRefLabel(spell.index)}
-              </span>
+              <span className="min-w-0 flex-1 truncate text-sm">{nameFor(names, spell.ref)}</span>
               {spell.prepared ? (
                 <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium text-primary">
                   Prepared

@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { CharacterRecord } from "@/features/dnd/db/schema";
 import { makeCharacter } from "@/features/dnd/derive/fixtures";
-import { groupProficiencies, spellSection } from "@/features/dnd/play/sections";
+import { describeCharacter, groupProficiencies, spellSection } from "@/features/dnd/play/sections";
 
 /** A character carrying the given proficiency refs, over the neutral fixture. */
 function withProficiencies(patch: Partial<CharacterRecord["proficiencies"]>): CharacterRecord {
@@ -151,5 +151,51 @@ describe("proficiencies by kind", () => {
     const languages = groupProficiencies(character).find((group) => group.kind === "languages");
 
     expect(languages?.entries).toEqual([{ ref: "catalog:elvish", index: "elvish" }]);
+  });
+});
+
+describe("the character descriptor", () => {
+  const NAMES = {
+    "catalog:barbarian": "Barbarian",
+    "catalog:berserker": "Path of the Berserker",
+    "catalog:dwarf": "Dwarf",
+    "catalog:hill-dwarf": "Hill Dwarf",
+  };
+
+  it("reads level, race and class", () => {
+    const character = makeCharacter({ level: 3, classRef: "catalog:barbarian", raceRef: "catalog:dwarf" });
+
+    expect(describeCharacter(character, NAMES)).toBe("Level 3 Dwarf Barbarian");
+  });
+
+  it("qualifies the race with its subrace and the class with its subclass", () => {
+    const character = makeCharacter({
+      level: 3,
+      classRef: "catalog:barbarian",
+      subclassRef: "catalog:berserker",
+      raceRef: "catalog:dwarf",
+      subraceRef: "catalog:hill-dwarf",
+    });
+
+    expect(describeCharacter(character, NAMES)).toBe("Level 3 Dwarf (Hill Dwarf) Barbarian (Path of the Berserker)");
+  });
+
+  it("falls back to the level alone before the names have resolved", () => {
+    // The line renders on first paint, before `useTabData` returns. A ⚠ marker
+    // that vanishes a moment later is noise on the one line read at a glance.
+    const character = makeCharacter({ level: 3, classRef: "catalog:barbarian", raceRef: "catalog:dwarf" });
+
+    expect(describeCharacter(character, {})).toBe("Level 3");
+  });
+
+  it("drops a subtype whose name has not resolved rather than the type with it", () => {
+    const character = makeCharacter({
+      level: 3,
+      classRef: "catalog:barbarian",
+      subclassRef: "catalog:no-such-subclass",
+      raceRef: "catalog:dwarf",
+    });
+
+    expect(describeCharacter(character, NAMES)).toBe("Level 3 Dwarf Barbarian");
   });
 });

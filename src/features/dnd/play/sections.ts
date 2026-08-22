@@ -6,7 +6,7 @@
  * nothing to show, and a decision buried in JSX is one nothing can test.
  */
 import { refIndex } from "@/features/dnd/db/resolve-ref";
-import type { CharacterProficiencies, Ref } from "@/features/dnd/db/schema";
+import type { CharacterProficiencies, CharacterRecord, Ref } from "@/features/dnd/db/schema";
 import type { SpellSlotPool } from "@/features/dnd/derive";
 
 /** One spell on the Spells tab. */
@@ -124,4 +124,35 @@ export function groupProficiencies(character: { proficiencies: CharacterProficie
       return index ? [{ ref, index }] : [];
     }),
   }));
+}
+
+/**
+ * The line under a character's name: `Level 3 Dwarf (Hill Dwarf) Barbarian
+ * (Path of the Berserker)`.
+ *
+ * Exists because class, subclass, race and subrace were reachable *nowhere* in
+ * the UI until it did — each had a home in the tab map and no pixels behind it,
+ * which is the failure mode the map is supposed to catch. See #164's "every
+ * field in the character record is reachable" criterion.
+ *
+ * A ref that has not resolved yet is skipped rather than rendered as a marker:
+ * this line is read at a glance, and a ⚠ that disappears a moment later is
+ * noise. An unresolvable ref still shows through the Bio tab.
+ */
+export function describeCharacter(
+  character: Pick<CharacterRecord, "level" | "classRef" | "subclassRef" | "raceRef" | "subraceRef">,
+  names: Partial<Record<string, string>>,
+): string {
+  const race = qualified(names[character.raceRef], character.subraceRef ? names[character.subraceRef] : undefined);
+  const klass = qualified(names[character.classRef], character.subclassRef ? names[character.subclassRef] : undefined);
+
+  return [`Level ${character.level}`, race, klass].filter(Boolean).join(" ");
+}
+
+/** `Dwarf (Hill Dwarf)`, or just `Dwarf` when the subtype has no name yet. */
+function qualified(name: string | undefined, sub: string | undefined): string {
+  if (!name) {
+    return "";
+  }
+  return sub ? `${name} (${sub})` : name;
 }

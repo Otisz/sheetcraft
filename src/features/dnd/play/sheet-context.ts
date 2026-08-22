@@ -22,7 +22,7 @@ import {
   type CatalogEntry,
   type CharacterRecord,
   type Ref,
-  type SpellSlotLevel,
+  SPELL_SLOT_LEVELS,
 } from "@/features/dnd/db/schema";
 import type { DeriveContext, EquippedArmor, Skill, SlotsByLevel, Weapon } from "@/features/dnd/derive";
 import { DEFAULT_SPEED, SKILLS } from "@/features/dnd/derive";
@@ -269,9 +269,6 @@ async function loadLevelSpellcasting(character: CharacterRecord, db: SheetcraftD
     cantripsKnown: typeof cantripsKnown === "number" ? cantripsKnown : 0,
   };
 }
-
-/** The nine slot levels, ascending. */
-const SPELL_SLOT_LEVELS: SpellSlotLevel[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 function isAbil(value: unknown): value is Abil {
   return typeof value === "string" && (ABILITIES as readonly string[]).includes(value);

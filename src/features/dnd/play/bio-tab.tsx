@@ -1,6 +1,5 @@
-import { refIndex } from "@/features/dnd/db/resolve-ref";
 import type { CharacterRecord } from "@/features/dnd/db/schema";
-import { unknownRefLabel } from "@/features/dnd/play/format";
+import { nameFor } from "@/features/dnd/play/format";
 import { groupProficiencies } from "@/features/dnd/play/sections";
 import type { TabData } from "@/features/dnd/play/tab-data";
 
@@ -41,11 +40,7 @@ function Background({ character, names }: { character: CharacterRecord; names: T
           label="Background"
           // A null ref is "not chosen", which is different from a ref that
           // failed to resolve — the second gets the ⚠ marker, the first does not.
-          value={
-            character.backgroundRef === null
-              ? "Not chosen"
-              : (names[character.backgroundRef] ?? unknownRefLabel(refIndex(character.backgroundRef)))
-          }
+          value={character.backgroundRef === null ? "Not chosen" : nameFor(names, character.backgroundRef)}
         />
         <Field label="Alignment" value={character.alignment ?? "Not chosen"} />
       </dl>
@@ -83,7 +78,7 @@ function Proficiencies({ character, names }: { character: CharacterRecord; names
             <ul className="mt-1 flex flex-wrap gap-1">
               {group.entries.map((entry) => (
                 <li key={entry.ref} className="rounded-full bg-muted px-2 py-0.5 text-xs">
-                  {names[entry.ref] ?? unknownRefLabel(entry.index)}
+                  {nameFor(names, entry.ref)}
                 </li>
               ))}
             </ul>

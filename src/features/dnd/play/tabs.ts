@@ -46,9 +46,18 @@ export const SHEET_TABS: readonly SheetTab[] = [
 ];
 
 /**
- * Where each field lives. `header` means the always-visible part of the sheet
- * above the tabs — identity and hit points, which must never be a tap away
- * mid-combat.
+ * Where each field lives, and **the component that actually renders it**.
+ *
+ * The second half is the load-bearing one, and it was learned the hard way: an
+ * earlier version of this map recorded only the tab, and five fields —
+ * `classRef`, `subclassRef`, `raceRef`, `subraceRef`, `hpRolls` — sat in it
+ * with no pixels behind them. The coverage test passed on the map entry alone,
+ * which is precisely the drift the map claims to prevent. Naming the renderer
+ * makes the claim checkable: a home whose `renderedBy` is empty is a field the
+ * player cannot reach, and the test says so.
+ *
+ * `header` means the always-visible part of the sheet above the tabs — identity
+ * and hit points, which must never be a tap away mid-combat.
  *
  * Bookkeeping fields (`id`, `schemaVersion`, `createdAt`) are placed on `bio`
  * rather than excluded: a record field with no home is the failure this map
@@ -56,58 +65,73 @@ export const SHEET_TABS: readonly SheetTab[] = [
  */
 export const CHARACTER_FIELD_HOMES = {
   // identity — the header, always visible
-  name: "header",
-  level: "header",
-  classRef: "header",
-  subclassRef: "header",
-  raceRef: "header",
-  subraceRef: "header",
-  abilities: "header",
-  modifiers: "header",
+  name: { tab: "header", renderedBy: "Identity" },
+  level: { tab: "header", renderedBy: "Identity" },
+  classRef: { tab: "header", renderedBy: "Identity" },
+  subclassRef: { tab: "header", renderedBy: "Identity" },
+  raceRef: { tab: "header", renderedBy: "Identity" },
+  subraceRef: { tab: "header", renderedBy: "Identity" },
+  abilities: { tab: "header", renderedBy: "Abilities" },
+  modifiers: { tab: "header", renderedBy: "EffectsRow" },
 
   // bookkeeping — the foot of Bio
-  id: "bio",
-  schemaVersion: "bio",
-  createdAt: "bio",
-  updatedAt: "bio",
-  backgroundRef: "bio",
-  alignment: "bio",
+  id: { tab: "bio", renderedBy: "Bookkeeping" },
+  schemaVersion: { tab: "bio", renderedBy: "Bookkeeping" },
+  createdAt: { tab: "bio", renderedBy: "Bookkeeping" },
+  updatedAt: { tab: "bio", renderedBy: "Bookkeeping" },
+  backgroundRef: { tab: "bio", renderedBy: "Background" },
+  alignment: { tab: "bio", renderedBy: "Background" },
 
   // the tabs
-  hpRolls: "combat",
-  proficiencies: "bio",
-  equipment: "inventory",
-  spells: "spells",
-  play: "header",
+  hpRolls: { tab: "combat", renderedBy: "HitPointRolls" },
+  proficiencies: { tab: "bio", renderedBy: "Proficiencies" },
+  equipment: { tab: "inventory", renderedBy: "Items" },
+  spells: { tab: "spells", renderedBy: "SpellList" },
+  play: { tab: "header", renderedBy: "HpSection" },
 
-  "proficiencies.skills": "skills",
-  "proficiencies.expertise": "skills",
-  "proficiencies.saves": "skills",
-  "proficiencies.armor": "bio",
-  "proficiencies.weapons": "bio",
-  "proficiencies.tools": "bio",
-  "proficiencies.languages": "bio",
+  "proficiencies.skills": { tab: "skills", renderedBy: "SkillList" },
+  "proficiencies.expertise": { tab: "skills", renderedBy: "SkillList" },
+  "proficiencies.saves": { tab: "skills", renderedBy: "SavingThrows" },
+  "proficiencies.armor": { tab: "bio", renderedBy: "Proficiencies" },
+  "proficiencies.weapons": { tab: "bio", renderedBy: "Proficiencies" },
+  "proficiencies.tools": { tab: "bio", renderedBy: "Proficiencies" },
+  "proficiencies.languages": { tab: "bio", renderedBy: "Proficiencies" },
 
-  "play.currentHp": "header",
-  "play.tempHp": "header",
-  "play.deathSaves": "header",
-  "play.conditions": "header",
-  "play.hitDiceSpent": "combat",
-  "play.inspiration": "combat",
-  "play.slotsExpended": "spells",
-  "play.currency": "inventory",
-  "play.notes": "bio",
-} as const satisfies Record<string, SheetTabId | "header">;
+  "play.currentHp": { tab: "header", renderedBy: "HpSection" },
+  "play.tempHp": { tab: "header", renderedBy: "HpSection" },
+  "play.deathSaves": { tab: "header", renderedBy: "HpSection" },
+  "play.conditions": { tab: "header", renderedBy: "EffectsRow" },
+  "play.hitDiceSpent": { tab: "combat", renderedBy: "HitDiceSection" },
+  "play.inspiration": { tab: "combat", renderedBy: "InspirationSection" },
+  "play.slotsExpended": { tab: "spells", renderedBy: "Slots" },
+  "play.currency": { tab: "inventory", renderedBy: "CurrencySection" },
+  "play.notes": { tab: "bio", renderedBy: "Notes" },
+} as const satisfies Record<string, FieldHome>;
 
 /**
- * Which tab a field lives on, or `undefined` for one this map has never heard
- * of — which is a field with no home, and a test failure rather than a runtime
- * one.
+ * Where one field lives and what draws it. `undefined` means the map has never
+ * heard of the field — a field with no home, and a test failure rather than a
+ * runtime one.
  */
-export function tabForField(field: string): SheetTabId | "header" | undefined {
+export type FieldHome = {
+  tab: SheetTabId | "header";
+  /**
+   * The component function that renders it. A name rather than a reference so
+   * this module stays free of React and testable as pure data — the test
+   * asserts it is non-empty, and a reviewer can grep it.
+   */
+  renderedBy: string;
+};
+
+export function homeForField(field: string): FieldHome | undefined {
   return Object.hasOwn(CHARACTER_FIELD_HOMES, field)
     ? CHARACTER_FIELD_HOMES[field as keyof typeof CHARACTER_FIELD_HOMES]
     : undefined;
+}
+
+/** Which tab a field lives on. */
+export function tabForField(field: string): SheetTabId | "header" | undefined {
+  return homeForField(field)?.tab;
 }
 
 /** One coin's row on the Inventory tab. */

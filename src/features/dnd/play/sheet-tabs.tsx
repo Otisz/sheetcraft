@@ -27,19 +27,19 @@ import { SHEET_TABS } from "@/features/dnd/play/tabs";
 export function SheetTabs({
   character,
   derived,
+  names,
   onPlayChange,
 }: {
   character: CharacterRecord;
   derived: Derived;
+  /** Resolved display names, queried by the sheet and shared with the header. */
+  names: Partial<Record<string, string>>;
   onPlayChange: (play: Partial<CharacterRecord["play"]>) => void;
 }) {
+  // The feature prose arrives after first paint on purpose — see `tab-data.ts`.
+  // Until it does, refs render through the same `⚠ unknown` path a dangling ref
+  // takes, which is honest: the app does not know the name yet.
   const tabData = useTabData(character);
-
-  // The names and feature prose arrive after first paint on purpose — see
-  // `tab-data.ts`. Until they do, refs render through the same
-  // `⚠ unknown` path a dangling ref takes, which is honest: the app does not
-  // know the name yet.
-  const names = tabData.data?.names ?? {};
 
   const section = spellSection({
     className: names[character.classRef] ?? null,

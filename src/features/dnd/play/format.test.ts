@@ -4,7 +4,7 @@
  * the skill is called.
  */
 import { describe, expect, it } from "vitest";
-import { signed, titleCase, unknownRefLabel } from "@/features/dnd/play/format";
+import { nameFor, signed, titleCase, unknownRefLabel } from "@/features/dnd/play/format";
 
 describe("signed", () => {
   it("marks a positive modifier with a plus", () => {
@@ -47,5 +47,15 @@ describe("unknownRefLabel", () => {
 
   it("says so plainly when the ref could not even be parsed", () => {
     expect(unknownRefLabel(null)).toBe("\u26a0 unknown (malformed ref)");
+  });
+});
+
+describe("nameFor", () => {
+  it("returns the resolved name", () => {
+    expect(nameFor({ "catalog:longsword": "Longsword" }, "catalog:longsword")).toBe("Longsword");
+  });
+
+  it("falls back to the marker when the ref has not resolved", () => {
+    expect(nameFor({}, "catalog:longsword")).toBe("\u26a0 unknown (longsword)");
   });
 });

@@ -18,6 +18,7 @@ import {
   type Abil,
   type CharacterRecord,
   type Modifier,
+  SPELL_SLOT_LEVELS,
   type SpellSlotLevel,
 } from "@/features/dnd/db/schema";
 import {
@@ -510,9 +511,6 @@ function attackAbility(weapon: Weapon, abilityModifiers: Record<Abil, number>): 
   }
   return weapon.ranged ? "dex" : "str";
 }
-
-/** The nine slot levels, ascending — the order a caster reads them in. */
-const SPELL_SLOT_LEVELS: SpellSlotLevel[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 /**
  * Raises a trace to a floor, recording the raise as a step. A clamp applied

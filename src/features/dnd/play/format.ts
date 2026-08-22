@@ -1,3 +1,6 @@
+import { refIndex } from "@/features/dnd/db/resolve-ref";
+import type { Ref } from "@/features/dnd/db/schema";
+
 /**
  * The formatting the sheet's components share.
  *
@@ -33,6 +36,19 @@ export function titleCase(index: string): string {
       position > 0 && MINOR_WORDS.has(word) ? word : word.charAt(0).toUpperCase() + word.slice(1),
     )
     .join(" ");
+}
+
+/**
+ * The display name for a ref, falling back to the ⚠ marker when it has not
+ * resolved.
+ *
+ * One helper rather than the same `names[ref] ?? unknownRefLabel(refIndex(ref))`
+ * at each of the four tabs that show refs: the fallback is a decision about how
+ * the sheet admits ignorance, and four copies is four chances to admit it
+ * differently.
+ */
+export function nameFor(names: Partial<Record<string, string>>, ref: Ref): string {
+  return names[ref] ?? unknownRefLabel(refIndex(ref));
 }
 
 /**

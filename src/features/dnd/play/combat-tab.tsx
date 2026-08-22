@@ -29,6 +29,7 @@ export function CombatTab({
         onChange={(inspiration) => onPlayChange({ inspiration })}
       />
       <AttacksSection attacks={derived.attacks} />
+      <HitPointRolls rolls={character.hpRolls} maxHp={derived.maxHp} />
     </div>
   );
 }
@@ -130,6 +131,44 @@ function AttacksSection({ attacks }: { attacks: Attack[] }) {
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The per-level hit die rolls behind max HP.
+ *
+ * Shown rather than folded away because the record stores the *rolls*, not a
+ * total — `maxHp = sum(rolls) + conMod × level` — and a player who cannot see
+ * them has no way to check the one number that decides whether they are
+ * unconscious. See CONTEXT.md § Hit point rolls.
+ */
+function HitPointRolls({ rolls, maxHp }: { rolls: number[]; maxHp: number }) {
+  return (
+    <section aria-label="Hit point rolls" className="flex flex-col gap-2">
+      <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Hit point rolls</h2>
+
+      {rolls.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
+          No rolls recorded.
+        </p>
+      ) : (
+        <div className="rounded-lg border bg-card px-3 py-2">
+          <ul className="flex flex-wrap gap-1">
+            {rolls.map((roll, level) => (
+              // The level is the identity here — two levels can roll the same
+              // number, and they are still different levels.
+              // biome-ignore lint/suspicious/noArrayIndexKey: the index IS the level
+              <li key={level} className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums">
+                <span className="text-muted-foreground">L{level + 1}</span> {roll}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Plus your CON modifier per level — {maxHp} max HP in total.
+          </p>
+        </div>
       )}
     </section>
   );

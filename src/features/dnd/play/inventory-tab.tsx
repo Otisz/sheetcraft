@@ -1,8 +1,7 @@
 import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { refIndex } from "@/features/dnd/db/resolve-ref";
 import type { CharacterRecord, Currency } from "@/features/dnd/db/schema";
-import { unknownRefLabel } from "@/features/dnd/play/format";
+import { nameFor } from "@/features/dnd/play/format";
 import type { TabData } from "@/features/dnd/play/tab-data";
 import { currencyRows } from "@/features/dnd/play/tabs";
 
@@ -29,6 +28,12 @@ export function InventoryTab({
     </div>
   );
 }
+
+/**
+ * The ceiling on one coin pile. Far past any real hoard, and comfortably inside
+ * the range that survives a JSON round-trip into a backup file.
+ */
+const MAX_COINS = 999_999;
 
 /**
  * The five coins, cp → pp ascending.
@@ -74,7 +79,12 @@ function CurrencySection({
               variant="outline"
               size="icon-sm"
               aria-label={`Gain one ${row.label.toLowerCase()}`}
-              onClick={() => onCurrencyChange({ ...currency, [row.unit]: row.amount + 1 })}
+              // Capped as well as floored. Nothing in the rules bounds a purse,
+              // but an unbounded counter reachable by held tap eventually leaves
+              // the safe-integer range and starts storing a number that will not
+              // round-trip through a backup file.
+              disabled={row.amount >= MAX_COINS}
+              onClick={() => onCurrencyChange({ ...currency, [row.unit]: Math.min(MAX_COINS, row.amount + 1) })}
             >
               <Plus />
             </Button>
@@ -107,9 +117,7 @@ function Items({ equipment, names }: { equipment: CharacterRecord["equipment"]; 
         <ul className="flex flex-col gap-1.5">
           {equipment.map((entry) => (
             <li key={entry.itemRef} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {names[entry.itemRef] ?? unknownRefLabel(refIndex(entry.itemRef))}
-              </span>
+              <span className="min-w-0 flex-1 truncate text-sm">{nameFor(names, entry.itemRef)}</span>
               {entry.quantity > 1 ? (
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">×{entry.quantity}</span>
               ) : null}
