@@ -153,6 +153,7 @@ export function CreateCharacterForm() {
           placeholder="Choose a class"
           options={classes.data ?? []}
           pending={classes.isPending}
+          authors="classes"
           value={draft.classRef}
           error={issueFor("class")}
           onChange={(classRef) =>
@@ -179,6 +180,7 @@ export function CreateCharacterForm() {
             placeholder="Choose a subclass"
             options={subclasses.data ?? []}
             pending={subclasses.isPending}
+            authors="subclasses"
             value={draft.subclassRef}
             error={issueFor("subclass")}
             onChange={(subclassRef) => setDraft((current) => ({ ...current, subclassRef }))}
@@ -190,6 +192,7 @@ export function CreateCharacterForm() {
           placeholder="Choose a race"
           options={races.data ?? []}
           pending={races.isPending}
+          authors="races"
           value={draft.raceRef}
           error={issueFor("race")}
           onChange={(raceRef) => setDraft((current) => setRace(current, raceRef))}
@@ -201,6 +204,7 @@ export function CreateCharacterForm() {
             label="Subrace"
             placeholder="Choose a subrace"
             options={subraces.data ?? []}
+            authors="subraces"
             value={draft.subraceRef}
             onChange={(subraceRef) => setDraft((current) => ({ ...current, subraceRef }))}
           />

@@ -148,7 +148,13 @@ edit changes a referent that still exists, a delete would strand the character.
 
 Homebrew ids are name slugs scoped to the homebrew table (`Azureborn` → `homebrew:azureborn`).
 `catalog:human` and `homebrew:human` coexist — the prefix disambiguates. Strip apostrophes
-**before** the separator pass, or `Healer's Kit` slugs to `healer-s-kit` instead of `healers-kit`. Catalog refs can still dangle after an upstream re-seed; those render as
+**before** the separator pass, or `Healer's Kit` slugs to `healer-s-kit` instead of `healers-kit`.
+A collision within the type takes a `-2`, `-3` suffix; the catalog table is not consulted, because
+it is a different namespace.
+
+The id is **assigned once and then held fixed**. A rename moves the display name only — the id is
+what every character points at, so re-slugging on rename would dangle exactly the references the
+delete block exists to protect. Catalog refs can still dangle after an upstream re-seed; those render as
 `⚠ unknown (<index>)` and derived values fall back to base rather than throwing.
 
 ## Character record

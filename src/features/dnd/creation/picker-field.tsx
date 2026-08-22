@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 import { FieldError } from "@/features/dnd/creation/field-error";
 import type { PickerOption } from "@/features/dnd/creation/options";
 import type { Ref } from "@/features/dnd/db/schema";
+import type { HomebrewType } from "@/features/dnd/homebrew";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,6 +35,11 @@ export type PickerFieldProps = {
   error?: string;
   /** Shown while the catalog read is in flight. */
   pending?: boolean;
+  /**
+   * Which homebrew type the footer action authors. Omitted by a picker whose
+   * type is not authorable — the action is then absent rather than dead.
+   */
+  authors?: HomebrewType;
 };
 
 /** Field controls are thumb-height throughout the page. */
@@ -42,7 +49,16 @@ function selectedName(options: PickerOption[], value: Ref | null): string | null
   return options.find((one) => one.ref === value)?.name ?? null;
 }
 
-export function PickerField({ label, placeholder, options, value, onChange, error, pending }: PickerFieldProps) {
+export function PickerField({
+  label,
+  placeholder,
+  options,
+  value,
+  onChange,
+  error,
+  pending,
+  authors,
+}: PickerFieldProps) {
   const [open, setOpen] = useState(false);
   const chosen = selectedName(options, value);
 
@@ -105,18 +121,26 @@ export function PickerField({ label, placeholder, options, value, onChange, erro
             />
           </div>
 
-          <DrawerFooter className="pt-4">
-            {/*
-              Homebrew authoring is its own ticket
-              ([#165](https://github.com/Otisz/sheetcraft/issues/165)). The
-              action is shown, and says so, rather than being hidden — a picker
-              that never mentions homebrew is a picker nobody discovers it in.
-            */}
-            <Button type="button" variant="ghost" size="lg" className={cn(CONTROL, "text-base")} disabled>
-              <Plus />
-              Create homebrew… (soon)
-            </Button>
-          </DrawerFooter>
+          {/*
+            The way into authoring, from the place where the gap is felt. A
+            picker that never mentions homebrew is a picker nobody discovers it
+            in. Rendered only when the type is authorable, so the action is
+            never a dead control.
+          */}
+          {authors ? (
+            <DrawerFooter className="pt-4">
+              <Button
+                render={<Link to="/dnd/homebrew/new/$type" params={{ type: authors }} />}
+                nativeButton={false}
+                variant="ghost"
+                size="lg"
+                className={cn(CONTROL, "text-base")}
+              >
+                <Plus />
+                Create homebrew…
+              </Button>
+            </DrawerFooter>
+          ) : null}
         </DrawerContent>
       </Drawer>
     </div>

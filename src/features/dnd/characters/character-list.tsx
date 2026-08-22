@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, MoreVertical, Plus } from "lucide-react";
+import { ChevronRight, FlaskConical, MoreVertical, Plus } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,7 +47,23 @@ export function CharacterList() {
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       <header className="flex items-baseline justify-between gap-3 px-4 pt-6 pb-4">
         <h1 className="text-2xl font-bold">Characters</h1>
-        {rows.length > 0 ? <p className="text-sm text-muted-foreground">{rows.length}</p> : null}
+        <div className="flex items-center gap-3">
+          {rows.length > 0 ? <p className="text-sm text-muted-foreground">{rows.length}</p> : null}
+          {/*
+            The only way into authoring that does not require a character to
+            exist first — the pickers offer it too, but a fresh install has no
+            picker open.
+          */}
+          <Button
+            render={<Link to="/dnd/homebrew" />}
+            nativeButton={false}
+            variant="ghost"
+            size="icon-lg"
+            aria-label="Homebrew"
+          >
+            <FlaskConical />
+          </Button>
+        </div>
       </header>
 
       {rows.length === 0 ? (

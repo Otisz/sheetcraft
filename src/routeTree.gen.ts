@@ -15,6 +15,9 @@ import { Route as GamesRouteImport } from "./routes/games";
 import { Route as DndIndexRouteImport } from "./routes/dnd/index";
 import { Route as DndCharacterIdRouteImport } from "./routes/dnd/$characterId";
 import { Route as DndCreateRouteImport } from "./routes/dnd/create";
+import { Route as DndHomebrewIndexRouteImport } from "./routes/dnd/homebrew/index";
+import { Route as DndHomebrewTypeIndexRouteImport } from "./routes/dnd/homebrew/$type.$index";
+import { Route as DndHomebrewNewTypeRouteImport } from "./routes/dnd/homebrew/new.$type";
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -46,6 +49,21 @@ const DndCreateRoute = DndCreateRouteImport.update({
   path: "/create",
   getParentRoute: () => DndRouteRoute,
 } as any);
+const DndHomebrewIndexRoute = DndHomebrewIndexRouteImport.update({
+  id: "/homebrew/",
+  path: "/homebrew/",
+  getParentRoute: () => DndRouteRoute,
+} as any);
+const DndHomebrewTypeIndexRoute = DndHomebrewTypeIndexRouteImport.update({
+  id: "/homebrew/$type/$index",
+  path: "/homebrew/$type/$index",
+  getParentRoute: () => DndRouteRoute,
+} as any);
+const DndHomebrewNewTypeRoute = DndHomebrewNewTypeRouteImport.update({
+  id: "/homebrew/new/$type",
+  path: "/homebrew/new/$type",
+  getParentRoute: () => DndRouteRoute,
+} as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
@@ -54,6 +72,9 @@ export interface FileRoutesByFullPath {
   "/dnd/$characterId": typeof DndCharacterIdRoute;
   "/dnd/create": typeof DndCreateRoute;
   "/dnd/": typeof DndIndexRoute;
+  "/dnd/homebrew/": typeof DndHomebrewIndexRoute;
+  "/dnd/homebrew/$type/$index": typeof DndHomebrewTypeIndexRoute;
+  "/dnd/homebrew/new/$type": typeof DndHomebrewNewTypeRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
@@ -61,6 +82,9 @@ export interface FileRoutesByTo {
   "/dnd/$characterId": typeof DndCharacterIdRoute;
   "/dnd/create": typeof DndCreateRoute;
   "/dnd": typeof DndIndexRoute;
+  "/dnd/homebrew": typeof DndHomebrewIndexRoute;
+  "/dnd/homebrew/$type/$index": typeof DndHomebrewTypeIndexRoute;
+  "/dnd/homebrew/new/$type": typeof DndHomebrewNewTypeRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -70,13 +94,32 @@ export interface FileRoutesById {
   "/dnd/$characterId": typeof DndCharacterIdRoute;
   "/dnd/create": typeof DndCreateRoute;
   "/dnd/": typeof DndIndexRoute;
+  "/dnd/homebrew/": typeof DndHomebrewIndexRoute;
+  "/dnd/homebrew/$type/$index": typeof DndHomebrewTypeIndexRoute;
+  "/dnd/homebrew/new/$type": typeof DndHomebrewNewTypeRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    "/" | "/dnd" | "/games" | "/dnd/$characterId" | "/dnd/create" | "/dnd/";
+    | "/"
+    | "/dnd"
+    | "/games"
+    | "/dnd/$characterId"
+    | "/dnd/create"
+    | "/dnd/"
+    | "/dnd/homebrew/"
+    | "/dnd/homebrew/$type/$index"
+    | "/dnd/homebrew/new/$type";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/games" | "/dnd/$characterId" | "/dnd/create" | "/dnd";
+  to:
+    | "/"
+    | "/games"
+    | "/dnd/$characterId"
+    | "/dnd/create"
+    | "/dnd"
+    | "/dnd/homebrew"
+    | "/dnd/homebrew/$type/$index"
+    | "/dnd/homebrew/new/$type";
   id:
     | "__root__"
     | "/"
@@ -84,7 +127,10 @@ export interface FileRouteTypes {
     | "/games"
     | "/dnd/$characterId"
     | "/dnd/create"
-    | "/dnd/";
+    | "/dnd/"
+    | "/dnd/homebrew/"
+    | "/dnd/homebrew/$type/$index"
+    | "/dnd/homebrew/new/$type";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -137,6 +183,27 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DndCreateRouteImport;
       parentRoute: typeof DndRouteRoute;
     };
+    "/dnd/homebrew/": {
+      id: "/dnd/homebrew/";
+      path: "/homebrew";
+      fullPath: "/dnd/homebrew/";
+      preLoaderRoute: typeof DndHomebrewIndexRouteImport;
+      parentRoute: typeof DndRouteRoute;
+    };
+    "/dnd/homebrew/$type/$index": {
+      id: "/dnd/homebrew/$type/$index";
+      path: "/homebrew/$type/$index";
+      fullPath: "/dnd/homebrew/$type/$index";
+      preLoaderRoute: typeof DndHomebrewTypeIndexRouteImport;
+      parentRoute: typeof DndRouteRoute;
+    };
+    "/dnd/homebrew/new/$type": {
+      id: "/dnd/homebrew/new/$type";
+      path: "/homebrew/new/$type";
+      fullPath: "/dnd/homebrew/new/$type";
+      preLoaderRoute: typeof DndHomebrewNewTypeRouteImport;
+      parentRoute: typeof DndRouteRoute;
+    };
   }
 }
 
@@ -144,12 +211,18 @@ interface DndRouteRouteChildren {
   DndCharacterIdRoute: typeof DndCharacterIdRoute;
   DndCreateRoute: typeof DndCreateRoute;
   DndIndexRoute: typeof DndIndexRoute;
+  DndHomebrewIndexRoute: typeof DndHomebrewIndexRoute;
+  DndHomebrewTypeIndexRoute: typeof DndHomebrewTypeIndexRoute;
+  DndHomebrewNewTypeRoute: typeof DndHomebrewNewTypeRoute;
 }
 
 const DndRouteRouteChildren: DndRouteRouteChildren = {
   DndCharacterIdRoute: DndCharacterIdRoute,
   DndCreateRoute: DndCreateRoute,
   DndIndexRoute: DndIndexRoute,
+  DndHomebrewIndexRoute: DndHomebrewIndexRoute,
+  DndHomebrewTypeIndexRoute: DndHomebrewTypeIndexRoute,
+  DndHomebrewNewTypeRoute: DndHomebrewNewTypeRoute,
 };
 
 const DndRouteRouteWithChildren = DndRouteRoute._addFileChildren(
