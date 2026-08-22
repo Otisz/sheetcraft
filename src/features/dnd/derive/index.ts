@@ -4,9 +4,9 @@
  * derivation is free to move.
  */
 
-export type { ArmorClassData, DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
-export { DEFAULT_SPEED, EMPTY_CONTEXT } from "@/features/dnd/derive/context";
-export type { Derived, DerivedTarget } from "@/features/dnd/derive/derive";
+export type { ArmorClassData, DeriveContext, EquippedArmor, SlotsByLevel, Weapon } from "@/features/dnd/derive/context";
+export { DEFAULT_HIT_DIE, DEFAULT_SPEED, EMPTY_CONTEXT } from "@/features/dnd/derive/context";
+export type { Attack, Derived, DerivedTarget, HitDice, SpellSlotPool } from "@/features/dnd/derive/derive";
 export { abilityModifier, derive, ModifierValidationError } from "@/features/dnd/derive/derive";
 export type { Step, Trace } from "@/features/dnd/derive/resolve";
 export type { Reference, Skill, Target } from "@/features/dnd/derive/targets";

@@ -4,6 +4,8 @@ import { updateCharacter } from "@/features/dnd/db/characters-repository";
 import type { CharacterRecord, Modifier, PlayState } from "@/features/dnd/db/schema";
 import type { DeriveContext } from "@/features/dnd/derive";
 import { loadDeriveContext } from "@/features/dnd/play/sheet-context";
+import type { TabData } from "@/features/dnd/play/tab-data";
+import { loadTabData } from "@/features/dnd/play/tab-data";
 
 /**
  * The query layer for play mode. Dexie is reached only from inside these
@@ -21,6 +23,7 @@ const FOREVER = Number.POSITIVE_INFINITY;
 export const playKeys = {
   all: ["dnd", "play"] as const,
   context: (id: string) => [...playKeys.all, "context", id] as const,
+  tabData: (id: string) => [...playKeys.all, "tab-data", id] as const,
 };
 
 /**
@@ -34,6 +37,26 @@ export function useDeriveContext(character: CharacterRecord | null | undefined) 
   return useQuery<DeriveContext>({
     queryKey: playKeys.context(character?.id ?? "none"),
     queryFn: () => loadDeriveContext(character as CharacterRecord),
+    enabled: Boolean(character),
+    staleTime: FOREVER,
+  });
+}
+
+/**
+ * The display names and feature prose the six tabs render.
+ *
+ * A separate query from `useDeriveContext` rather than a widening of it,
+ * because they have different urgency: the derive context is on the path to
+ * first paint, while a name behind a tab can arrive a moment later. Merging
+ * them would put a feature-table scan in front of the HP row.
+ *
+ * Keyed and invalidated on the character for the same reason the context is —
+ * adding an item changes what needs naming.
+ */
+export function useTabData(character: CharacterRecord | null | undefined) {
+  return useQuery<TabData>({
+    queryKey: playKeys.tabData(character?.id ?? "none"),
+    queryFn: () => loadTabData(character as CharacterRecord),
     enabled: Boolean(character),
     staleTime: FOREVER,
   });
@@ -73,6 +96,9 @@ export function useUpdateModifiers() {
     onSuccess: (_result, { id }) => {
       void queryClient.invalidateQueries({ queryKey: characterKeys.all });
       void queryClient.invalidateQueries({ queryKey: playKeys.context(id) });
+      // The tabs name what the character carries, so an equipment change moves
+      // this too — a stale name outlives the item it named.
+      void queryClient.invalidateQueries({ queryKey: playKeys.tabData(id) });
     },
   });
 }

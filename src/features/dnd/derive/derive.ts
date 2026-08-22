@@ -13,8 +13,21 @@
  * max_bonus}`, the class's spellcasting ability — arrives as a `DeriveContext`
  * the caller resolves, because the engine cannot reach Dexie and stay pure.
  */
-import { ABILITIES, type Abil, type CharacterRecord, type Modifier } from "@/features/dnd/db/schema";
-import { DEFAULT_SPEED, type DeriveContext, type EquippedArmor } from "@/features/dnd/derive/context";
+import {
+  ABILITIES,
+  type Abil,
+  type CharacterRecord,
+  type Modifier,
+  SPELL_SLOT_LEVELS,
+  type SpellSlotLevel,
+} from "@/features/dnd/db/schema";
+import {
+  DEFAULT_HIT_DIE,
+  DEFAULT_SPEED,
+  type DeriveContext,
+  type EquippedArmor,
+  type Weapon,
+} from "@/features/dnd/derive/context";
 import { type ResolvedModifier, resolve, type Trace } from "@/features/dnd/derive/resolve";
 import { isReference, isTarget, type Reference, SKILLS, type Skill, type Target } from "@/features/dnd/derive/targets";
 
@@ -33,6 +46,48 @@ export class ModifierValidationError extends Error {
     this.name = "ModifierValidationError";
   }
 }
+
+/**
+ * The hit dice pool. PHB p.186: one die per level, of the class's own size,
+ * spent on a short rest and regained on a long one.
+ *
+ * `total` is derived from level rather than stored, so a level-up grows the
+ * pool with no migration; `spent` is the play state the steppers write.
+ */
+export type HitDice = {
+  /** The die size — 12 for a barbarian. */
+  die: number;
+  total: number;
+  spent: number;
+  remaining: number;
+};
+
+/** One slot level's pool, in the same derived-max / stored-spent shape. */
+export type SpellSlotPool = {
+  level: SpellSlotLevel;
+  total: number;
+  expended: number;
+  remaining: number;
+};
+
+/**
+ * One weapon's attack line, as the Combat tab renders it.
+ *
+ * Damage is kept as `dice` plus a separate `bonus` rather than as a formatted
+ * `1d8+3` string: Sheetcraft does not roll, so the sheet is the only thing that
+ * formats, and a modifier that moves the bonus must not have to rewrite prose.
+ */
+export type Attack = {
+  /** The weapon's `index` — the id in `attack.<id>.hit`. */
+  index: string;
+  name: string;
+  /** Which ability the attack and damage rolls key off, finesse already resolved. */
+  ability: Abil;
+  toHit: number;
+  damageDice: string;
+  damageBonus: number;
+  damageType: string;
+};
 
 /** The derived values this ticket covers, plus the trace for any of them. */
 export type Derived = {
@@ -53,6 +108,14 @@ export type Derived = {
   /** `null` for a non-caster — a number there would be one the sheet cannot tell from a real one. */
   spellSaveDc: number | null;
   spellAttackBonus: number | null;
+  /** The hit dice pool the Combat tab steppers spend from. */
+  hitDice: HitDice;
+  /** One row per slot level the character actually has. Empty for a non-caster. */
+  spellSlots: SpellSlotPool[];
+  /** How many cantrips the class knows — cast at will, so never a slot row. */
+  cantripsKnown: number;
+  /** One entry per carried weapon, with the to-hit and damage the sheet shows. */
+  attacks: Attack[];
   /** Why a value is what it is. Throws for a target this engine does not derive. */
   explain(target: DerivedTarget): Trace;
 };
@@ -330,6 +393,55 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
     ? resolve(proficiencyTrace.value + abilityModifiers[spellAbility], forTarget(modifiers, "spell.attack", scope))
     : null;
 
+  // One die per level (PHB p.186). `remaining` floors at 0 rather than going
+  // negative: a level-down after spending dice would otherwise read "-1 left",
+  // and a pool cannot owe you dice.
+  const hitDiceTotal = level;
+  const hitDiceSpent = character.play.hitDiceSpent;
+  const hitDice: HitDice = {
+    die: context.hitDie ?? DEFAULT_HIT_DIE,
+    total: hitDiceTotal,
+    spent: hitDiceSpent,
+    remaining: Math.max(0, hitDiceTotal - hitDiceSpent),
+  };
+
+  // Only the levels the character genuinely has slots in. The SRD stores
+  // explicit zeroes for the rest, and a row reading "0 / 0" is noise on a
+  // phone. Ascending, because that is the order a caster reads them in.
+  const spellSlots: SpellSlotPool[] = SPELL_SLOT_LEVELS.flatMap((slotLevel) => {
+    const total = context.slotsByLevel?.[slotLevel] ?? 0;
+    if (total <= 0) {
+      return [];
+    }
+
+    const expended = character.play.slotsExpended[slotLevel];
+    return [{ level: slotLevel, total, expended, remaining: Math.max(0, total - expended) }];
+  });
+
+  const attacks: Attack[] = (context.weapons ?? []).map((weapon) => {
+    const ability = attackAbility(weapon, abilityModifiers);
+
+    // Proficiency applies to the attack roll and never to damage (PHB p.194) —
+    // which is why the two resolutions start from different bases rather than
+    // sharing one.
+    const hitBase = abilityModifiers[ability] + (weapon.proficient ? proficiencyTrace.value : 0);
+    const hitTrace = resolve(hitBase, forTarget(modifiers, `attack.${weapon.index}.hit`, scope));
+    const damageTrace = resolve(
+      abilityModifiers[ability],
+      forTarget(modifiers, `attack.${weapon.index}.damage`, scope),
+    );
+
+    return {
+      index: weapon.index,
+      name: weapon.name,
+      ability,
+      toHit: hitTrace.value,
+      damageDice: weapon.damageDice,
+      damageBonus: damageTrace.value,
+      damageType: weapon.damageType,
+    };
+  });
+
   return {
     abilityScores: scores,
     abilityModifiers,
@@ -343,6 +455,10 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
     passivePerception: passiveTrace.value,
     spellSaveDc: saveDcTrace?.value ?? null,
     spellAttackBonus: spellAttackTrace?.value ?? null,
+    hitDice,
+    spellSlots,
+    cantripsKnown: context.cantripsKnown ?? 0,
+    attacks,
     explain(target) {
       if (target === "maxHp") {
         return maxHpTrace;
@@ -378,6 +494,22 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
       return scoreTraces[target.slice("ability.".length) as Abil];
     },
   };
+}
+
+/**
+ * Which ability a weapon attacks with.
+ *
+ * PHB p.194: melee keys off STR, ranged off DEX. Finesse (p.195) lets the
+ * attacker *choose* — so the sheet shows the better of the two, which is the
+ * choice every player makes and the one a sheet can make on their behalf
+ * without being wrong. A finesse weapon that is also ranged (a thrown dagger)
+ * is still a choice, so finesse is checked first.
+ */
+function attackAbility(weapon: Weapon, abilityModifiers: Record<Abil, number>): Abil {
+  if (weapon.finesse) {
+    return abilityModifiers.dex > abilityModifiers.str ? "dex" : "str";
+  }
+  return weapon.ranged ? "dex" : "str";
 }
 
 /**

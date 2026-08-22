@@ -20,6 +20,20 @@ export {
   toggleCondition,
   toggleEffect,
 } from "@/features/dnd/play/effects";
+export { nameFor, signed, titleCase, unknownRefLabel } from "@/features/dnd/play/format";
 export type { HpCommit, HpPool, HpStatus } from "@/features/dnd/play/hp";
 export { applyDamage, applyHeal, applyHpCommit, applyTempHp, hpStatus } from "@/features/dnd/play/hp";
+export type {
+  ProficiencyEntry,
+  ProficiencyGroup,
+  ProficiencyKind,
+  SpellEntry,
+  SpellSection,
+} from "@/features/dnd/play/sections";
+export { describeCharacter, groupProficiencies, spellSection } from "@/features/dnd/play/sections";
 export { loadDeriveContext } from "@/features/dnd/play/sheet-context";
+export { SheetTabs } from "@/features/dnd/play/sheet-tabs";
+export type { FeatureEntry, TabData } from "@/features/dnd/play/tab-data";
+export { loadTabData } from "@/features/dnd/play/tab-data";
+export type { CurrencyRow, FieldHome, SheetTab, SheetTabId } from "@/features/dnd/play/tabs";
+export { CHARACTER_FIELD_HOMES, currencyRows, homeForField, SHEET_TABS, tabForField } from "@/features/dnd/play/tabs";

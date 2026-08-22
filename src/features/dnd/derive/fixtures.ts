@@ -6,7 +6,7 @@
  * Typed literals rather than JSON so a schema change breaks compilation.
  */
 import type { Abil, CharacterRecord, Modifier } from "@/features/dnd/db/schema";
-import { DEFAULT_SPEED, type DeriveContext, type EquippedArmor } from "@/features/dnd/derive/context";
+import { DEFAULT_SPEED, type DeriveContext, type EquippedArmor, type Weapon } from "@/features/dnd/derive/context";
 import type { Skill } from "@/features/dnd/derive/targets";
 
 /** A character with every field at a neutral value, for tests to spread over. */
@@ -105,3 +105,39 @@ export function makeContext(overrides: Partial<DeriveContext> = {}): DeriveConte
 export function proficientIn(...skills: Skill[]): DeriveContext {
   return makeContext({ skillProficiencies: skills });
 }
+
+/** A weapon entry, defaulting to a non-finesse melee weapon the character is not proficient with. */
+export function makeWeapon(overrides: Partial<Weapon> & Pick<Weapon, "index">): Weapon {
+  return {
+    name: overrides.index,
+    damageDice: "1d6",
+    damageType: "Bludgeoning",
+    finesse: false,
+    ranged: false,
+    proficient: false,
+    ...overrides,
+  };
+}
+
+/**
+ * The SRD weapon entries the attack cases use, transcribed from the vendored
+ * `equipment.json` — the dagger's finesse property and the shortbow's ranged
+ * category are read from there, not assumed.
+ */
+export const WEAPONS = {
+  longsword: makeWeapon({ index: "longsword", name: "Longsword", damageDice: "1d8", damageType: "Slashing" }),
+  shortbow: makeWeapon({
+    index: "shortbow",
+    name: "Shortbow",
+    damageDice: "1d6",
+    damageType: "Piercing",
+    ranged: true,
+  }),
+  dagger: makeWeapon({
+    index: "dagger",
+    name: "Dagger",
+    damageDice: "1d4",
+    damageType: "Piercing",
+    finesse: true,
+  }),
+} as const;

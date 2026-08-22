@@ -37,6 +37,16 @@ export type Modifier = {
 
 export type SpellSlotLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
+/**
+ * The nine slot levels, ascending — the order a caster reads them in.
+ *
+ * Beside the type rather than in either module that iterates it: the resolver
+ * that reads the SRD's `spell_slots_level_N` keys and the engine that emits the
+ * rows must agree on this set exactly, and two copies are two things to keep in
+ * step.
+ */
+export const SPELL_SLOT_LEVELS: readonly SpellSlotLevel[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
 export type DeathSaveCount = 0 | 1 | 2 | 3;
 
 /**

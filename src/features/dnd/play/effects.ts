@@ -16,6 +16,7 @@
  */
 import type { CharacterRecord, Modifier } from "@/features/dnd/db/schema";
 import { CONDITIONS, type Condition, findCondition } from "@/features/dnd/play/conditions";
+import { titleCase } from "@/features/dnd/play/format";
 
 /**
  * An override is a modifier record, but it is not an *effect*: it is a value
@@ -169,11 +170,9 @@ function targetLabel(target: string): string {
     return `${rest.toUpperCase()} save`;
   }
   if (kind === "skill") {
-    // `animal-handling` → `Animal Handling`.
-    return rest
-      .split("-")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
+    // Through the shared formatter rather than a second copy of the rule — the
+    // two spellings had already begun to diverge on `Sleight of Hand`.
+    return titleCase(rest);
   }
   return target;
 }

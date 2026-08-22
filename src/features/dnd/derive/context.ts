@@ -10,7 +10,7 @@
  * Everything a *feature* contributes arrives as a modifier record instead,
  * because SRD features are prose-only. See CONTEXT.md § Base formula.
  */
-import type { Abil } from "@/features/dnd/db/schema";
+import type { Abil, SpellSlotLevel } from "@/features/dnd/db/schema";
 import type { Skill } from "@/features/dnd/derive/targets";
 
 /**
@@ -52,6 +52,49 @@ export type EquippedArmor = ArmorClassData & {
  */
 export const DEFAULT_SPEED = 30;
 
+/**
+ * The hit die size used when the class ref does not resolve.
+ *
+ * Like `DEFAULT_SPEED`, a fallback rather than a rule: every SRD class declares
+ * its own `hit_die`, so this is reached only for a dangling ref. A d8 is the
+ * SRD's most common value.
+ */
+export const DEFAULT_HIT_DIE = 8;
+
+/**
+ * A weapon the character can attack with, already resolved from the equipment
+ * table.
+ *
+ * `finesse` and `ranged` are carried as booleans rather than as the SRD's
+ * `properties` array and `weapon_range` string, for the same reason
+ * `EquippedArmor` carries `isShield`: the engine must never string-match
+ * catalog prose. The caller reads the SRD's shape; the engine reads meaning.
+ */
+export type Weapon = {
+  /** The entry's `index` — also the weapon id in `attack.<id>.hit`. */
+  index: string;
+  name: string;
+  /** The damage dice as the SRD spells them: `1d8`. Never parsed — Sheetcraft does not roll. */
+  damageDice: string;
+  /** The SRD's own damage type name, for display: `Slashing`. */
+  damageType: string;
+  /** PHB p.195 — the attack may use DEX instead of STR, whichever is better. */
+  finesse: boolean;
+  /** A ranged weapon keys off DEX (PHB p.194). */
+  ranged: boolean;
+  /** Whether the character is proficient with it — the bonus applies to the attack roll only. */
+  proficient: boolean;
+};
+
+/**
+ * The slot maxima for one class and level, as `{ [slot level]: count }`.
+ *
+ * Sparse on purpose: the SRD stores explicit zeroes for the levels a caster has
+ * no slots in, and a row reading "0 / 0" is noise on a phone. The caller drops
+ * them, so a level present here is a level the character genuinely has.
+ */
+export type SlotsByLevel = Partial<Record<SpellSlotLevel, number>>;
+
 /** The resolved catalog data one derivation needs. */
 export type DeriveContext = {
   /** Every equipped armor entry, shields included. Order is irrelevant. */
@@ -77,6 +120,26 @@ export type DeriveContext = {
    * hardcoded.
    */
   spellcastingAbility: Abil | null;
+  /**
+   * The class's hit die size — structural SRD data (`classes[].hit_die`), so it
+   * is read rather than hardcoded. Optional because a dangling class ref has
+   * none to read; `DEFAULT_HIT_DIE` covers that case.
+   */
+  hitDie?: number;
+  /**
+   * The weapons the character can attack with, in the order they are carried.
+   * Empty for a character carrying none, which is the honest rendering — an
+   * unarmed strike is a feature, not equipment, and would arrive as a modifier.
+   */
+  weapons?: Weapon[];
+  /**
+   * The slot maxima for this class and level, from the `levels` catalog. Absent
+   * for a non-caster, which is different from present-and-empty only in intent;
+   * both derive to no slot rows.
+   */
+  slotsByLevel?: SlotsByLevel;
+  /** How many cantrips the class knows at this level. Cast at will, so never a slot row. */
+  cantripsKnown?: number;
 };
 
 /**

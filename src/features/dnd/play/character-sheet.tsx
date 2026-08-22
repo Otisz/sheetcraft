@@ -17,9 +17,12 @@ import { derive } from "@/features/dnd/derive";
 import type { DeathSaves } from "@/features/dnd/play/death-saves";
 import { activeOverrides, clearOverride } from "@/features/dnd/play/effects";
 import { EffectsRow } from "@/features/dnd/play/effects-row";
+import { signed } from "@/features/dnd/play/format";
 import type { HpPool } from "@/features/dnd/play/hp";
 import { HpSection } from "@/features/dnd/play/hp-row";
-import { useDeriveContext, useUpdateModifiers, useUpdatePlay } from "@/features/dnd/play/queries";
+import { useDeriveContext, useTabData, useUpdateModifiers, useUpdatePlay } from "@/features/dnd/play/queries";
+import { describeCharacter } from "@/features/dnd/play/sections";
+import { SheetTabs } from "@/features/dnd/play/sheet-tabs";
 import { cn, THUMB_ACTION } from "@/lib/utils";
 
 /**
@@ -74,6 +77,9 @@ function SheetBody({
   onModifiersChange: (input: { id: string; modifiers: Modifier[] }) => void;
 }) {
   const overrides = activeOverrides(character);
+  // Queried once here and handed down, so the header's class/race line and the
+  // tabs' names are the same fetch rather than two.
+  const names = useTabData(character).data?.names ?? {};
 
   function writePlay(play: Partial<CharacterRecord["play"]>) {
     onPlayChange({ id: character.id, play: { ...character.play, ...play } });
@@ -83,7 +89,7 @@ function SheetBody({
     // `pb-` leaves room under the last section; nothing here is laid out wider
     // than the viewport, so the page never scrolls horizontally.
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-4 pb-12">
-      <Identity character={character} />
+      <Identity character={character} names={names} />
 
       <HpSection
         pool={{ currentHp: character.play.currentHp, tempHp: character.play.tempHp }}
@@ -114,12 +120,19 @@ function SheetBody({
         onModifiersChange={(modifiers) => onModifiersChange({ id: character.id, modifiers })}
         onConditionsChange={(conditions: Ref[]) => writePlay({ conditions })}
       />
+
+      {/*
+        Everything above stays on screen; the six tabs below are where the rest
+        of the record lives. HP and the effects row are never a tap away — that
+        is the split #164 was designed around.
+      */}
+      <SheetTabs character={character} derived={derived} names={names} onPlayChange={writePlay} />
     </div>
   );
 }
 
 /** Identity, and the `⋯` menu that is the only door to editing this character. */
-function Identity({ character }: { character: CharacterRecord }) {
+function Identity({ character, names }: { character: CharacterRecord; names: Partial<Record<string, string>> }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -130,7 +143,12 @@ function Identity({ character }: { character: CharacterRecord }) {
           Characters
         </Link>
         <h1 className="truncate text-2xl font-bold">{character.name}</h1>
-        <p className="text-sm text-muted-foreground">Level {character.level}</p>
+        {/*
+          Class and race live here, not on a tab. They were reachable nowhere at
+          all until this line existed — the tab map gave them a home and nothing
+          rendered them, which is exactly the gap the map exists to close.
+        */}
+        <p className="text-sm text-muted-foreground">{describeCharacter(character, names)}</p>
       </div>
 
       <Button
@@ -279,11 +297,6 @@ function Abilities({ derived }: { derived: Derived }) {
       ))}
     </section>
   );
-}
-
-/** A modifier reads `+3` or `−1`; a bare `3` is ambiguous on a character sheet. */
-function signed(value: number): string {
-  return value >= 0 ? `+${value}` : String(value);
 }
 
 function SheetFailed({ onRetry }: { onRetry: () => void }) {
