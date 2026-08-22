@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
-import { resolveRef } from "@/features/dnd/db/resolve-ref";
+import { refIndex, refSource, resolveRef } from "@/features/dnd/db/resolve-ref";
 import { createTestDb, destroyTestDb } from "@/test/db";
 
 let db: SheetcraftDb;
@@ -82,5 +82,36 @@ describe("resolveRef", () => {
     for (const ref of refs) {
       await expect(resolveRef("races", ref, db)).resolves.toMatchObject({ found: false });
     }
+  });
+});
+
+/**
+ * The accessors exist so that nothing above this module has to split a ref
+ * itself. CONTEXT.md § Catalog reference: parsed in exactly one place.
+ */
+describe("refIndex", () => {
+  it("returns the index of a well-formed ref, whichever table it names", () => {
+    expect(refIndex("catalog:human")).toBe("human");
+    expect(refIndex("homebrew:azureborn")).toBe("azureborn");
+  });
+
+  it("rejects a prefix-less string rather than treating the whole thing as an index", () => {
+    expect(refIndex("human")).toBeNull();
+  });
+
+  it.each(["", "catalog:", ":human", "nonsense:human", null])("rejects %o", (ref) => {
+    expect(refIndex(ref as string | null)).toBeNull();
+  });
+});
+
+describe("refSource", () => {
+  it("names the table a ref selects", () => {
+    expect(refSource("catalog:human")).toBe("catalog");
+    expect(refSource("homebrew:azureborn")).toBe("homebrew");
+  });
+
+  it("returns null for anything malformed", () => {
+    expect(refSource("human")).toBeNull();
+    expect(refSource(null)).toBeNull();
   });
 });
