@@ -1,20 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCharacter } from "@/features/dnd/characters";
+import { CharacterSheet } from "@/features/dnd/play";
 
 /**
- * One character. This ticket only opens it — the sheet itself is
- * [#163](https://github.com/Otisz/sheetcraft/issues/163) (play mode) and
- * [#164](https://github.com/Otisz/sheetcraft/issues/164) (the six tabs).
+ * One character's sheet, in play mode — the surface used mid-combat. The six
+ * tabs below it are [#164](https://github.com/Otisz/sheetcraft/issues/164).
  *
- * What it does carry now is the not-found case, which is real rather than
- * hypothetical: a bookmarked id survives the character being deleted, and on a
- * local-first app there is no server to 404 for us.
+ * The not-found case is real rather than hypothetical: a bookmarked id survives
+ * the character being deleted, and on a local-first app there is no server to
+ * 404 for us.
  */
-export const Route = createFileRoute("/dnd/$characterId")({ component: CharacterSheet });
+export const Route = createFileRoute("/dnd/$characterId")({ component: CharacterRoute });
 
-function CharacterSheet() {
+function CharacterRoute() {
   const { characterId } = Route.useParams();
   const character = useCharacter(characterId);
 
@@ -30,23 +29,7 @@ function CharacterSheet() {
     return <NotFound />;
   }
 
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4">
-      <BackLink />
-      <h1 className="text-2xl font-bold">{character.data.name}</h1>
-      <p className="text-sm text-muted-foreground">Level {character.data.level}</p>
-      <p className="text-sm text-muted-foreground">The sheet itself lands with the next tickets.</p>
-    </div>
-  );
-}
-
-function BackLink() {
-  return (
-    <Link to="/dnd" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground">
-      <ChevronLeft className="size-4" />
-      Characters
-    </Link>
-  );
+  return <CharacterSheet character={character.data} />;
 }
 
 function NotFound() {

@@ -14,7 +14,7 @@
  * the caller resolves, because the engine cannot reach Dexie and stay pure.
  */
 import { ABILITIES, type Abil, type CharacterRecord, type Modifier } from "@/features/dnd/db/schema";
-import type { DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
+import { DEFAULT_SPEED, type DeriveContext, type EquippedArmor } from "@/features/dnd/derive/context";
 import { type ResolvedModifier, resolve, type Trace } from "@/features/dnd/derive/resolve";
 import { isReference, isTarget, type Reference, SKILLS, type Skill, type Target } from "@/features/dnd/derive/targets";
 
@@ -42,6 +42,10 @@ export type Derived = {
   proficiencyBonus: number;
   maxHp: number;
   armorClass: number;
+  /** The DEX check that orders combat — a raw ability check, never proficient. */
+  initiative: number;
+  /** Walking speed in feet, from the race's own `speed`. */
+  speed: number;
   /** Every skill's check modifier, proficiency and expertise included. */
   skills: Record<Skill, number>;
   saves: Record<Abil, number>;
@@ -58,6 +62,8 @@ export type DerivedTarget =
   | "proficiencyBonus"
   | "maxHp"
   | "ac"
+  | "initiative"
+  | "speed"
   | "passivePerception"
   | "spell.saveDc"
   | "spell.attack"
@@ -171,6 +177,14 @@ function forTarget(modifiers: Modifier[], target: Target, scope: ReferenceScope)
  */
 const MIN_MAX_HP = 1;
 
+/**
+ * The floor on speed. Nothing in the 2014 rules reduces a speed below 0 — the
+ * effects that stop you (grappled, restrained) set it to 0 outright — so this
+ * catches a homebrew or override that subtracts too much. Like the HP floor it
+ * is a visible trace step, never a silent clamp.
+ */
+const MIN_SPEED = 0;
+
 export function derive(character: CharacterRecord, context: DeriveContext): Derived {
   validate(character.modifiers);
 
@@ -243,6 +257,17 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
     ...forTarget(modifiers, "ac", scope),
   ]);
 
+  // A raw DEX check (PHB p.189) — no proficiency bonus. Reads the *derived*
+  // modifier, so a racial bonus or an ASI has already moved it.
+  const initiativeTrace = resolve(abilityModifiers.dex, forTarget(modifiers, "initiative", scope));
+
+  // The race's own `speed`, which is structural SRD data the caller resolved.
+  const speedTrace = withFloor(
+    resolve(context.speed ?? DEFAULT_SPEED, forTarget(modifiers, "speed", scope)),
+    MIN_SPEED,
+    "Speed cannot drop below 0",
+  );
+
   const saveTraces = {} as Record<Abil, Trace>;
   const saves = {} as Record<Abil, number>;
   for (const abil of ABILITIES) {
@@ -311,6 +336,8 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
     proficiencyBonus: proficiencyTrace.value,
     maxHp: maxHpTrace.value,
     armorClass: acTrace.value,
+    initiative: initiativeTrace.value,
+    speed: speedTrace.value,
     skills,
     saves,
     passivePerception: passiveTrace.value,
@@ -325,6 +352,12 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
       }
       if (target === "ac") {
         return acTrace;
+      }
+      if (target === "initiative") {
+        return initiativeTrace;
+      }
+      if (target === "speed") {
+        return speedTrace;
       }
       if (target === "passivePerception") {
         return passiveTrace;

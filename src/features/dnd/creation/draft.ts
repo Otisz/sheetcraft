@@ -7,6 +7,7 @@ import {
   POINT_BUY_BUDGET,
 } from "@/features/dnd/creation/abilities";
 import { floatingBonusChoices, type RacialSource, racialModifiers } from "@/features/dnd/creation/racial-bonuses";
+import { fixedAverageHpRolls } from "@/features/dnd/creation/starting-hp";
 import type { CreateCharacterInput } from "@/features/dnd/db/characters-repository";
 import type { Abil, Ref } from "@/features/dnd/db/schema";
 
@@ -44,6 +45,12 @@ export type DraftContext = {
   race?: RacialSource | null;
   /** The chosen subrace's entry. */
   subrace?: RacialSource | null;
+  /**
+   * The chosen class's hit die (`classes[].hit_die`), for the starting
+   * `hpRolls`. Structural SRD data, so it is read rather than hardcoded — and a
+   * homebrew class declaring its own die gets correct hit points for free.
+   */
+  hitDie?: number | null;
 };
 
 /**
@@ -230,5 +237,9 @@ export function buildCreateInput(draft: CreationDraft, context: DraftContext = {
     subclassRef: draft.subclassRef,
     subraceRef: draft.subraceRef,
     abilities: draft.abilities as Record<Abil, number>,
+    // One roll per level, the fixed average rather than a die roll: creation
+    // does not roll. They are stored as ordinary inputs, so editing them later
+    // is editing an input. See CONTEXT.md § Hit point rolls.
+    hpRolls: fixedAverageHpRolls(context.hitDie, draft.level),
   };
 }

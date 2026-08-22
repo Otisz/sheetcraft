@@ -59,6 +59,10 @@ export function CreateCharacterForm() {
   const subraces = useSubraceOptions(draft.raceRef);
   const subclassLevel = useSubclassLevel(draft.classRef);
 
+  const classEntry = useMemo(
+    () => classes.data?.find((one) => one.ref === draft.classRef) ?? null,
+    [classes.data, draft.classRef],
+  );
   const raceEntry = useMemo(
     () => races.data?.find((one) => one.ref === draft.raceRef) ?? null,
     [races.data, draft.raceRef],
@@ -77,8 +81,11 @@ export function CreateCharacterForm() {
       subclassLevel: subclassLevel.data ?? null,
       race: toRacialSource(raceEntry),
       subrace: toRacialSource(subraceEntry),
+      // Read off the catalog row the picker already handed over, so the
+      // starting hit points need no second lookup.
+      hitDie: typeof classEntry?.entry.hit_die === "number" ? classEntry.entry.hit_die : null,
     }),
-    [subclassLevel.data, raceEntry, subraceEntry],
+    [subclassLevel.data, raceEntry, subraceEntry, classEntry],
   );
 
   const issues = draftIssues(draft, context);

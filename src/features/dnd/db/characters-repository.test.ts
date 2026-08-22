@@ -222,3 +222,46 @@ describe("delete", () => {
     await expect(deleteCharacter("c_nope", db)).resolves.toBeUndefined();
   });
 });
+
+describe("starting hit points", () => {
+  it("starts a new character at full health rather than at 0", async () => {
+    // A character created at 0 hit points opens on the death-save panel, which
+    // is the loudest possible lie about a character nobody has played yet.
+    const character = await createCharacter({ ...FIGHTER, hpRolls: [10, 6, 6, 6] }, db);
+
+    expect(character.play.currentHp).toBe(28);
+  });
+
+  it("counts the CON modifier, including one arriving as a racial record", async () => {
+    const character = await createCharacter(
+      {
+        ...FIGHTER,
+        level: 2,
+        hpRolls: [10, 6],
+        abilities: { con: 14 },
+        modifiers: [
+          {
+            id: "race:dwarf:con",
+            source: "race:dwarf",
+            target: "ability.con",
+            op: "add",
+            value: 2,
+            enabled: true,
+            label: "Dwarf +2 CON",
+          },
+        ],
+      },
+      db,
+    );
+
+    // CON 14 + 2 = 16 → +3 per level, over two levels: 16 + 6 = 22.
+    expect(character.play.currentHp).toBe(22);
+  });
+
+  it("still stores no temp hp and no death saves", async () => {
+    const character = await createCharacter({ ...FIGHTER, hpRolls: [10] }, db);
+
+    expect(character.play.tempHp).toBe(0);
+    expect(character.play.deathSaves).toEqual({ successes: 0, failures: 0 });
+  });
+});

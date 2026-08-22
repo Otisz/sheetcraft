@@ -5,7 +5,7 @@
  */
 
 export type { ArmorClassData, DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
-export { EMPTY_CONTEXT } from "@/features/dnd/derive/context";
+export { DEFAULT_SPEED, EMPTY_CONTEXT } from "@/features/dnd/derive/context";
 export type { Derived, DerivedTarget } from "@/features/dnd/derive/derive";
 export { abilityModifier, derive, ModifierValidationError } from "@/features/dnd/derive/derive";
 export type { Step, Trace } from "@/features/dnd/derive/resolve";

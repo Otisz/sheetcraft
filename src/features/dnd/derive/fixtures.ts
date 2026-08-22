@@ -6,7 +6,7 @@
  * Typed literals rather than JSON so a schema change breaks compilation.
  */
 import type { Abil, CharacterRecord, Modifier } from "@/features/dnd/db/schema";
-import type { DeriveContext, EquippedArmor } from "@/features/dnd/derive/context";
+import { DEFAULT_SPEED, type DeriveContext, type EquippedArmor } from "@/features/dnd/derive/context";
 import type { Skill } from "@/features/dnd/derive/targets";
 
 /** A character with every field at a neutral value, for tests to spread over. */
@@ -91,7 +91,14 @@ export const ARMOR = {
 
 /** A derive context, defaulting to nothing equipped and no proficiencies. */
 export function makeContext(overrides: Partial<DeriveContext> = {}): DeriveContext {
-  return { armor: [], skillProficiencies: [], expertise: [], spellcastingAbility: null, ...overrides };
+  return {
+    armor: [],
+    speed: DEFAULT_SPEED,
+    skillProficiencies: [],
+    expertise: [],
+    spellcastingAbility: null,
+    ...overrides,
+  };
 }
 
 /** A context for a character proficient in the given skills. */

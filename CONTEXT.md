@@ -202,6 +202,12 @@ The one input that looks derived but isn't. At each level-up a 2014 player eithe
 takes the fixed average, so the roll is a genuine input. Stored as a **per-level array**, not a
 total: `maxHp = sum(hpRolls) + conMod * level`, which stays correct when CON changes.
 
+**Creation takes the fixed average** — the full hit die at level 1, then `die / 2 + 1` per level —
+because creation does not roll dice. The values are stored as ordinary rolls, so editing them later
+is editing an input, with nothing special-cased about how they got there. A new character's
+`currentHp` starts at the derived maximum: a character created at 0 opens on the death-save panel,
+which is the loudest possible lie about a character nobody has played yet.
+
 ## Installed (Home Screen web app)
 
 Sheetcraft running from the iOS Home Screen in `display: standalone`. **The only documented
@@ -245,6 +251,12 @@ it was absent from the schema entirely.
 ## Condition
 
 An SRD condition (Prone, Poisoned, …; 15 of them) tracked on a character as a **reminder only**.
+
+**Declared in source** (`features/dnd/play/conditions.ts`), not vendored: there is no `conditions`
+catalog in the upstream pin and no table for a ref to resolve against. The set is fixed at 15 and
+has not moved since 2014, so a source literal is honest where a lookup would be theatre. They are
+still stored on `play.conditions` as `catalog:` refs, and parsed through `resolveRef`'s accessors
+like every other ref.
 Conditions carry **no modifier record** — their real effects are advantage/disadvantage and movement,
 which Sheetcraft does not compute. The sheet renders them visually distinct from
 [Toggle](#toggle)-driven effects so the UI never implies arithmetic the app didn't do.
@@ -258,8 +270,10 @@ item, or player choice changes a number.
 { id, source, target, op, value, enabled, label }
 ```
 
-- **target** — a flat string path from a **closed** vocabulary (`ac`, `skill.stealth`, `save.dex`,
-  `attack.<weaponId>.hit`, `spell.saveDc`, …). Unknown targets are validation errors, not no-ops.
+- **target** — a flat string path from a **closed** vocabulary (`ac`, `initiative`, `speed`,
+  `skill.stealth`, `save.dex`, `attack.<weaponId>.hit`, `spell.saveDc`, …). Unknown targets are
+  validation errors, not no-ops. The vocabulary grows only as the engine learns to derive a value —
+  a target nothing computes would be a record that silently does nothing.
 - **op** — `add` | `set` | `min` | `max`. Numeric only. `min` and `max` name the **bound, not the
   function**: `min` is a floor (the value becomes *at least* the amount), `max` is a ceiling. This
   is the SRD's own reading — "your AC can't be less than 12" is a `min` of 12 — so `op:'min'` is
@@ -274,7 +288,14 @@ Defined in [Design the modifier record and derivation engine](https://github.com
 
 ## Toggle
 
-The `enabled` flag on a modifier record, flipped by the player on the sheet. Sheetcraft has **no
+The `enabled` flag on a modifier record, flipped by the player on the sheet.
+
+**Only `feature:`, `item:` and `homebrew:` records are toggleable**, and the play surface offers a
+switch for those alone. `race:` records are character data — a pill offering to turn a Dwarf's +2
+CON off is the accidental edit that edit-by-separation exists to prevent — and `equip:` records
+follow from equipping the item, not from a switch. Stated as a positive list rather than as "not an
+override", because the exclusion definition silently sweeps in every namespace added later.
+ Sheetcraft has **no
 condition vocabulary and no expression language** — the player is the condition evaluator, because
 they are already the rules engine at the table. This is the boundary that keeps Sheetcraft from
 becoming a rules engine.
@@ -303,8 +324,14 @@ a test rather than assumed.
 
 ## Base formula
 
-Hardcoded arithmetic for a derived value, using structural catalog data. AC's base formula reads
-armor's `{base, dex_bonus, max_bonus}`; everything a *feature* contributes arrives as a modifier
+Hardcoded arithmetic for a derived value, using structural catalog data.
+
+**Initiative** is a raw DEX check (PHB p.189) — the proficiency bonus never applies, so it is the
+DEX modifier plus any `initiative` records. **Speed** reads the race's own `speed`, floored at 0 as
+a visible trace step; nothing in the 2014 rules reduces a speed below 0, so the floor catches a
+homebrew or override that subtracts too much.
+
+AC's base formula reads armor's `{base, dex_bonus, max_bonus}`; everything a *feature* contributes arrives as a modifier
 record instead, because SRD features are prose-only.
 
 ```
