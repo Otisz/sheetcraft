@@ -2,6 +2,7 @@ import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
 import type { Abil, CharacterRecord, Modifier, Ref } from "@/features/dnd/db/schema";
 import { ABILITIES } from "@/features/dnd/db/schema";
+import { derive, EMPTY_CONTEXT } from "@/features/dnd/derive";
 
 /**
  * The repository seam over Dexie. Everything above it — routes, the sheet,
@@ -99,6 +100,13 @@ export async function createCharacter(
     hpRolls: input.hpRolls ?? [],
     modifiers: input.modifiers ?? [],
   };
+
+  // A new character starts at full health. Derived rather than summed here so
+  // the CON modifier — including one arriving as a racial record — is counted
+  // exactly once, by the one thing that knows how. `EMPTY_CONTEXT` is sound
+  // for this: max HP reads neither armor nor spellcasting, and a character
+  // being created has nothing equipped yet.
+  record.play.currentHp = derive(record, EMPTY_CONTEXT).maxHp;
 
   await db.dnd_characters.add(record);
   return record;

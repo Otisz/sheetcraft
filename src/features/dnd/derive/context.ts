@@ -42,10 +42,26 @@ export type EquippedArmor = ArmorClassData & {
   isShield: boolean;
 };
 
+/**
+ * The base walking speed in feet, used when the context carries none.
+ *
+ * A fallback rather than a rule: every SRD race declares its own `speed`, so
+ * this is only reached when the race ref does not resolve — the same
+ * dangling-ref case the sheet renders as `⚠ unknown`. Falling back to base
+ * beats throwing, and 30 is the SRD's most common value.
+ */
+export const DEFAULT_SPEED = 30;
+
 /** The resolved catalog data one derivation needs. */
 export type DeriveContext = {
   /** Every equipped armor entry, shields included. Order is irrelevant. */
   armor: EquippedArmor[];
+  /**
+   * The race's base walking speed in feet — structural SRD data
+   * (`races[].speed`), so it is read rather than hardcoded. Optional because a
+   * dangling race ref has none to read; `DEFAULT_SPEED` covers that case.
+   */
+  speed?: number;
   /**
    * The skills the character is proficient in, already resolved from the
    * `catalog:` refs on the record. Resolved by the caller rather than matched
@@ -73,6 +89,7 @@ export type DeriveContext = {
  */
 export const EMPTY_CONTEXT: DeriveContext = {
   armor: [],
+  speed: DEFAULT_SPEED,
   skillProficiencies: [],
   expertise: [],
   spellcastingAbility: null,

@@ -48,6 +48,8 @@ describe("isTarget", () => {
     "skill.sleight-of-hand",
     "attack.catalog:longsword.hit",
     "attack.dagger.damage",
+    "initiative",
+    "speed",
   ])("accepts %o", (target) => {
     expect(isTarget(target)).toBe(true);
   });
@@ -56,10 +58,6 @@ describe("isTarget", () => {
     "",
     "AC",
     "hp",
-    // No ticket derives these yet. The vocabulary stays closed to what the
-    // engine actually computes, so an unimplemented target fails loudly.
-    "initiative",
-    "speed",
     "ability.luck",
     "ability.",
     "save.STR",
