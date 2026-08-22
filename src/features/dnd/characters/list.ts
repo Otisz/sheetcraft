@@ -26,10 +26,13 @@ export type CharacterSummary = {
  * A catalog ref can dangle after an upstream re-seed, and that is not the
  * user's doing. The row still renders, marked, rather than the whole list
  * failing. See CONTEXT.md § Catalog reference.
+ *
+ * Takes the already-parsed `index` off the resolution rather than splitting
+ * the ref again: `resolveRef` is the one place a ref is parsed, and a second
+ * copy of that grammar here would re-open the seam.
  */
-function unknownLabel(ref: Ref | string): string {
-  const separator = ref.indexOf(":");
-  return `⚠ unknown (${separator === -1 ? ref : ref.slice(separator + 1)})`;
+function unknownLabel(index: string): string {
+  return `⚠ unknown (${index})`;
 }
 
 /**
@@ -43,10 +46,24 @@ async function resolveNames(type: RefType, refs: Iterable<Ref>, db: SheetcraftDb
     distinct.map(async (ref) => {
       const resolution = await resolveRef(type, ref, db);
       const name = resolution.found ? resolution.entry.name : undefined;
-      return [ref, typeof name === "string" ? name : unknownLabel(ref)] as const;
+      return [ref, typeof name === "string" ? name : unknownLabel(resolution.index)] as const;
     }),
   );
   return new Map(entries);
+}
+
+/**
+ * Reads a name the resolution pass has already produced. The map is built from
+ * exactly these refs, so a miss is impossible — but defaulting to `""` would
+ * render a blank row rather than say so, and a silently nameless class is the
+ * kind of wrong that survives to the table.
+ */
+function nameOf(names: Map<Ref, string>, ref: Ref): string {
+  const name = names.get(ref);
+  if (name === undefined) {
+    throw new Error(`No name resolved for ${ref}`);
+  }
+  return name;
 }
 
 /** Most recently updated first — the order `listCharacters` already returns. */
@@ -70,8 +87,8 @@ export async function listCharacterSummaries(db: SheetcraftDb = getDb()): Promis
     id: character.id,
     name: character.name,
     level: character.level,
-    className: classNames.get(character.classRef) ?? unknownLabel(character.classRef),
-    raceName: raceNames.get(character.raceRef) ?? unknownLabel(character.raceRef),
+    className: nameOf(classNames, character.classRef),
+    raceName: nameOf(raceNames, character.raceRef),
     updatedAt: character.updatedAt,
   }));
 }

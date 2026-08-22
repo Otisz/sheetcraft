@@ -1,17 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FIGHTER } from "@/features/dnd/characters/fixtures";
 import { listCharacterSummaries } from "@/features/dnd/characters/list";
 import { createCharacter } from "@/features/dnd/db/characters-repository";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { createTestDb, destroyTestDb } from "@/test/db";
 
 let db: SheetcraftDb;
-
-const FIGHTER = {
-  name: "Bruenor",
-  level: 4,
-  classRef: "catalog:fighter",
-  raceRef: "catalog:dwarf",
-} as const;
 
 beforeEach(async () => {
   db = createTestDb("character-list");

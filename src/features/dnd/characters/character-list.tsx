@@ -14,6 +14,10 @@ import {
 import type { CharacterSummary } from "@/features/dnd/characters/list";
 import { useCharacterList, useDeleteCharacter, useRenameCharacter } from "@/features/dnd/characters/queries";
 import { normalizeCharacterName } from "@/features/dnd/characters/rename";
+import { cn } from "@/lib/utils";
+
+/** Every drawer action is a full-width, thumb-height target. Repeated verbatim otherwise. */
+const DRAWER_ACTION = "h-12 w-full text-base";
 
 /**
  * The `/dnd` character list. Mobile-primary: rows are full-width tap targets,
@@ -86,12 +90,7 @@ export function CharacterList() {
  */
 function NewCharacterButton({ className }: { className?: string }) {
   return (
-    <Button
-      render={<Link to="/dnd/create" />}
-      nativeButton={false}
-      size="lg"
-      className={className ?? "h-12 w-full text-base"}
-    >
+    <Button render={<Link to="/dnd/create" />} nativeButton={false} size="lg" className={className ?? DRAWER_ACTION}>
       <Plus />
       New character
     </Button>
@@ -143,7 +142,7 @@ function EmptyState() {
       <p className="max-w-prose text-sm text-muted-foreground">
         Roll one up and it lives on this device — no account, and it works offline.
       </p>
-      <NewCharacterButton className="mt-2 h-12 w-full max-w-xs text-base" />
+      <NewCharacterButton className={cn(DRAWER_ACTION, "mt-2 max-w-xs")} />
     </div>
   );
 }
@@ -209,6 +208,15 @@ function RowActionDrawer({
   );
 }
 
+/** The one dismissal every drawer state offers. */
+function CancelAction() {
+  return (
+    <DrawerClose render={<Button type="button" variant="ghost" size="lg" className={DRAWER_ACTION} />}>
+      Cancel
+    </DrawerClose>
+  );
+}
+
 function RowMenu({
   character,
   onRename,
@@ -227,15 +235,13 @@ function RowMenu({
         </DrawerDescription>
       </DrawerHeader>
       <DrawerFooter className="pt-4">
-        <Button variant="outline" size="lg" className="h-12 w-full text-base" onClick={onRename}>
+        <Button variant="outline" size="lg" className={DRAWER_ACTION} onClick={onRename}>
           Rename
         </Button>
-        <Button variant="destructive" size="lg" className="h-12 w-full text-base" onClick={onDelete}>
+        <Button variant="destructive" size="lg" className={DRAWER_ACTION} onClick={onDelete}>
           Delete
         </Button>
-        <DrawerClose render={<Button variant="ghost" size="lg" className="h-12 w-full text-base" />}>
-          Cancel
-        </DrawerClose>
+        <DrawerClose render={<Button variant="ghost" size="lg" className={DRAWER_ACTION} />}>Cancel</DrawerClose>
       </DrawerFooter>
     </>
   );
@@ -273,12 +279,10 @@ function RenameForm({ character, onDone }: { character: CharacterSummary; onDone
         />
       </div>
       <DrawerFooter className="pt-4">
-        <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={!normalized || rename.isPending}>
+        <Button type="submit" size="lg" className={DRAWER_ACTION} disabled={!normalized || rename.isPending}>
           Save
         </Button>
-        <DrawerClose render={<Button type="button" variant="ghost" size="lg" className="h-12 w-full text-base" />}>
-          Cancel
-        </DrawerClose>
+        <CancelAction />
       </DrawerFooter>
     </form>
   );
@@ -303,15 +307,13 @@ function DeleteConfirm({ character, onDone }: { character: CharacterSummary; onD
         <Button
           variant="destructive"
           size="lg"
-          className="h-12 w-full text-base"
+          className={DRAWER_ACTION}
           disabled={remove.isPending}
           onClick={() => remove.mutate(character.id, { onSuccess: onDone })}
         >
           Delete
         </Button>
-        <DrawerClose render={<Button variant="ghost" size="lg" className="h-12 w-full text-base" />}>
-          Cancel
-        </DrawerClose>
+        <DrawerClose render={<Button variant="ghost" size="lg" className={DRAWER_ACTION} />}>Cancel</DrawerClose>
       </DrawerFooter>
     </>
   );

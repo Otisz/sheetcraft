@@ -1,8 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getCharacter } from "@/features/dnd/db/characters-repository";
+import { useCharacter } from "@/features/dnd/characters";
 
 /**
  * One character. This ticket only opens it — the sheet itself is
@@ -17,11 +16,7 @@ export const Route = createFileRoute("/dnd/$characterId")({ component: Character
 
 function CharacterSheet() {
   const { characterId } = Route.useParams();
-  const character = useQuery({
-    queryKey: ["dnd", "characters", "one", characterId],
-    queryFn: () => getCharacter(characterId).then((one) => one ?? null),
-    staleTime: Number.POSITIVE_INFINITY,
-  });
+  const character = useCharacter(characterId);
 
   if (character.isPending) {
     return (
