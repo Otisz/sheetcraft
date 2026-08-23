@@ -43,7 +43,11 @@ export function backupAge(lastExportedAt: Date | null, now: Date = new Date()): 
   // days, which reads as nonsense in a panel whose whole job is to be trusted.
   const days = Math.max(0, Math.floor((now.getTime() - lastExportedAt.getTime()) / MS_PER_DAY));
 
-  return { state: days > STALE_AFTER_DAYS ? "stale" : "fresh", days };
+  // `>=`, not `>`: at exactly 7 whole days the backup is as old as the window
+  // in which the browser may delete everything, and "over 7 days old" is the
+  // condition the spec names. A floored count plus a strict `>` would hold off
+  // until day 8, which is a day past the point of the warning.
+  return { state: days >= STALE_AFTER_DAYS ? "stale" : "fresh", days };
 }
 
 /**
@@ -70,6 +74,31 @@ export async function readLastExportedAt(db: SheetcraftDb = getDb()): Promise<Da
  */
 export async function recordExport(at: Date = new Date(), db: SheetcraftDb = getDb()): Promise<void> {
   await db.dnd_meta.put({ key: LAST_EXPORTED_KEY, value: at.toISOString() });
+}
+
+/**
+ * Whether the stale-backup banner has anything to warn about.
+ *
+ * Two conditions, and **both** are required. The backup must be stale — past
+ * WebKit's own 7-day clock — *and* there must be a change the backup does not
+ * contain. An old backup of data that has not moved since is not a risk, and
+ * interrupting somebody over it is how a warning becomes something users learn
+ * to dismiss on sight. See CONTEXT.md § Backup age.
+ *
+ * "A change was just made" is expressed as `lastChangeAt > lastExportedAt`
+ * rather than as a recency window: what matters is that unbacked-up work
+ * exists, not how recently it was typed. A character edited eight days ago and
+ * never backed up is in exactly the danger this warns about.
+ *
+ * With no backup at all, any change at all qualifies — that is the case this
+ * whole feature exists for.
+ */
+export function needsBackupWarning(age: BackupAge, lastChangeAt: Date | null, lastExportedAt: Date | null): boolean {
+  if (lastChangeAt === null || age.state === "fresh") {
+    return false;
+  }
+
+  return lastExportedAt === null || lastChangeAt > lastExportedAt;
 }
 
 /** The display-mode capabilities, injected so the two detection paths are testable. */

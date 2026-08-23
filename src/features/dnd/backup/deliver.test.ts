@@ -113,3 +113,48 @@ describe("deliverBackup", () => {
     expect(canShare).toHaveBeenCalledWith({ files: [FILE] });
   });
 });
+
+/**
+ * The transient-activation rule, pinned.
+ *
+ * The bug this guards against is not in `deliverBackup` — it is in the CALLER:
+ * an `await` on IndexedDB before `share()` consumes the activation and the call
+ * rejects with `NotAllowedError`. The rule is enforced by the shape of the API
+ * (`deliverBackup` takes a built `File`, so there is nowhere in it to await
+ * storage), and these assert that shape holds.
+ */
+describe("transient activation", () => {
+  it("reaches share() with no await between the call and the probe", async () => {
+    const order: string[] = [];
+    const file = backupFile({ ok: true }, "sheetcraft-backup.json");
+
+    await deliverBackup(
+      file,
+      environment({
+        canShare: () => {
+          order.push("canShare");
+          return true;
+        },
+        share: () => {
+          order.push("share");
+          return Promise.resolve();
+        },
+      }),
+    );
+
+    // Nothing interposes between the probe and the share — no read, no timer.
+    expect(order).toEqual(["canShare", "share"]);
+  });
+
+  it("builds the File synchronously, so a caller can construct it before any await", () => {
+    // The rule the API shape enforces: the expensive part — serialising the
+    // whole backup — happens in a plain synchronous call, so a tap handler can
+    // do it and reach `share()` without ever awaiting.
+    const built = backupFile({ characters: [] }, "x.json");
+
+    expect(built).toBeInstanceOf(File);
+    // Not a promise: an async `backupFile` would put an await back in front of
+    // every `share()`.
+    expect(built).not.toBeInstanceOf(Promise);
+  });
+});

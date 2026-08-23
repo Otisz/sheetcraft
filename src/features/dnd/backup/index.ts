@@ -18,6 +18,7 @@ export {
   backupAge,
   isStandalone,
   LAST_EXPORTED_KEY,
+  needsBackupWarning,
   readLastExportedAt,
   recordExport,
   requestPersistence,

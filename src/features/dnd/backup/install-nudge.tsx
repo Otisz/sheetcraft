@@ -1,7 +1,8 @@
 import { Share, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useDurability } from "@/features/dnd/backup/queries";
+import { THUMB_ACTION } from "@/lib/utils";
 
 /**
  * The install nudge, and the timing that is the whole point of it.
@@ -37,9 +38,60 @@ function rememberDismissed(): void {
   }
 }
 
+/**
+ * The deferred Android install prompt.
+ *
+ * Chromium fires `beforeinstallprompt` and expects the page to either let it
+ * through or capture it and fire it from a control of its own. Captured here so
+ * the invitation appears in the same place as the iOS instructions rather than
+ * in a browser-drawn bar the user meets out of context.
+ *
+ * **iOS has no equivalent** — no `beforeinstallprompt` exists in WebKit — which
+ * is why the hand-rolled Share → Add to Home Screen copy is the fallback rather
+ * than an afterthought.
+ */
+type InstallPromptEvent = Event & { prompt: () => Promise<void> };
+
+function useAndroidInstallPrompt(): { prompt: () => void } | null {
+  const [event, setEvent] = useState<InstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const capture = (raw: Event) => {
+      // Preventing the default is what defers Chromium's own banner; without
+      // it the browser shows its bar and this button is a duplicate.
+      raw.preventDefault();
+      setEvent(raw as InstallPromptEvent);
+    };
+
+    window.addEventListener("beforeinstallprompt", capture);
+    // Once installed the captured event is spent, and offering it again would
+    // be a button that does nothing.
+    const clear = () => setEvent(null);
+    window.addEventListener("appinstalled", clear);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", capture);
+      window.removeEventListener("appinstalled", clear);
+    };
+  }, []);
+
+  if (!event) {
+    return null;
+  }
+
+  return {
+    prompt: () => {
+      void event.prompt();
+      // Single-use by spec: a second `prompt()` on the same event rejects.
+      setEvent(null);
+    },
+  };
+}
+
 export function InstallNudge({ characterCount }: { characterCount: number }) {
   const durability = useDurability();
   const [dismissed, setDismissed] = useState(readDismissed);
+  const android = useAndroidInstallPrompt();
 
   // Never when already standalone — there is nothing to install — and never
   // once characters exist, because by then installing would strand them.
@@ -51,9 +103,24 @@ export function InstallNudge({ characterCount }: { characterCount: number }) {
     <aside className="relative flex flex-col gap-2 rounded-xl border border-border bg-card p-4 pr-12 text-sm">
       <p className="font-medium">Add Sheetcraft to your Home Screen first</p>
       <p className="text-muted-foreground">
-        Characters made in this tab won't carry over later — installing doesn't copy them. Tap{" "}
-        <Share className="inline size-4 align-text-bottom" /> Share, then <strong>Add to Home Screen</strong>.
+        Characters made in this tab won't carry over later — installing doesn't copy them.
+        {android ? null : (
+          <>
+            {" "}
+            Tap <Share className="inline size-4 align-text-bottom" /> Share, then <strong>Add to Home Screen</strong>.
+          </>
+        )}
       </p>
+      {/*
+        Chromium gets a real button, because it has a real API. iOS gets the
+        instructions above, because WebKit has no `beforeinstallprompt` and
+        there is nothing to fire.
+      */}
+      {android ? (
+        <Button size="lg" className={`${THUMB_ACTION} mt-1`} onClick={android.prompt}>
+          Install Sheetcraft
+        </Button>
+      ) : null}
       <Button
         variant="ghost"
         size="icon-lg"

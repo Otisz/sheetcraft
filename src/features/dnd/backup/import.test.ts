@@ -161,4 +161,37 @@ describe("importBackup", () => {
 
     expect(result).toEqual({ characters: 2, homebrew: 1 });
   });
+  it("keeps a homebrew field this build does not know about, rather than refusing the file", async () => {
+    const file = await backupOf(async (source) => {
+      await saveHomebrewEntry("races", RACE, undefined, source);
+      await createCharacter(
+        { name: "Zephyr", level: 1, classRef: "catalog:wizard", raceRef: "homebrew:azureborn" },
+        source,
+      );
+    });
+    // A field a NEWER build of Sheetcraft wrote. The vendored schemas are
+    // strict, but refusing somebody's only copy of their data over an unknown
+    // key is the worse failure — and it is written back on the next export.
+    file.homebrew.races[0] = { ...file.homebrew.races[0], futureField: "kept" } as (typeof file.homebrew.races)[0];
+
+    await importBackup(file, db);
+
+    const stored = await db.dnd_homebrew_races.get("azureborn");
+    expect((stored as Record<string, unknown> | undefined)?.futureField).toBe("kept");
+  });
+
+  it("still refuses a homebrew entry that is genuinely broken", async () => {
+    const file = await backupOf(async (source) => {
+      await saveHomebrewEntry("races", RACE, undefined, source);
+      await createCharacter(
+        { name: "Zephyr", level: 1, classRef: "catalog:wizard", raceRef: "homebrew:azureborn" },
+        source,
+      );
+    });
+    // A wrong TYPE, not an unknown key — the entry really is damaged.
+    file.homebrew.races[0] = { ...file.homebrew.races[0], speed: "fast" as unknown as number };
+
+    await expect(importBackup(file, db)).rejects.toThrow();
+    expect(await db.dnd_characters.count()).toBe(0);
+  });
 });

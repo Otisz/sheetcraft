@@ -88,11 +88,10 @@ export function BackupPanel({ characterCount }: { characterCount: number }) {
 /**
  * The export tap.
  *
- * `mutate` is called **directly in the handler with nothing awaited before it**
- * — Web Share needs transient activation, and an `await` here consumes it, so
- * `share()` would reject with `NotAllowedError`. The read and the `File`
- * construction happen inside the mutation, in the same call stack the tap
- * started. See `useExportBackup`.
+ * `share()` is **synchronous and awaits nothing** — Web Share needs transient
+ * activation, and the first `await` in the handler's call stack consumes it,
+ * which is why the backup is prepared ahead of the tap rather than read inside
+ * it. The button stays disabled until it is ready. See `useExportBackup`.
  */
 export function ExportButton({
   label,
@@ -107,7 +106,7 @@ export function ExportButton({
   variant?: "default" | "outline";
   onDone?: () => void;
 }) {
-  const exportBackup = useExportBackup();
+  const exportBackup = useExportBackup({ characterId, characterName });
 
   return (
     <>
@@ -115,11 +114,17 @@ export function ExportButton({
         variant={variant}
         size="lg"
         className={THUMB_ACTION}
-        disabled={exportBackup.isPending}
-        onClick={() => exportBackup.mutate({ characterId, characterName }, { onSuccess: onDone })}
+        // Disabled until the backup is prepared, so the tap itself never waits
+        // on IndexedDB — that await is what would consume the transient
+        // activation Web Share needs. See `useExportBackup`.
+        disabled={!exportBackup.ready || exportBackup.pending}
+        onClick={() => {
+          exportBackup.share();
+          onDone?.();
+        }}
       >
         <Share />
-        {exportBackup.isPending ? "Preparing…" : label}
+        {exportBackup.pending ? "Preparing…" : label}
       </Button>
 
       {/*
@@ -127,18 +132,18 @@ export function ExportButton({
         answering their choice with a message is noise. Everything else is
         reported, because a backup you are not sure happened is not a backup.
       */}
-      {exportBackup.isError ? (
+      {exportBackup.error ? (
         <p role="alert" className="text-sm text-destructive">
           That backup could not be written. Nothing has been lost — try again.
         </p>
       ) : null}
-      {exportBackup.data?.outcome === "downloaded" ? (
+      {exportBackup.result?.outcome === "downloaded" ? (
         <p aria-live="polite" className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <Download className="size-4 shrink-0" />
-          Saved as {exportBackup.data.filename}
+          Saved as {exportBackup.result.filename}
         </p>
       ) : null}
-      {exportBackup.data?.outcome === "shared" ? (
+      {exportBackup.result?.outcome === "shared" ? (
         <p aria-live="polite" className="text-sm text-muted-foreground">
           Backup shared.
         </p>
@@ -189,6 +194,11 @@ function ImportDrawer({ onClose }: { onClose: () => void }) {
             className="sr-only"
             onChange={(event) => {
               const chosen = event.target.files?.[0];
+              // Cleared immediately: a file input fires no `change` when the
+              // same file is picked twice, so somebody who picks the wrong
+              // file, fixes it, and picks the same NAME again would tap and
+              // get nothing at all.
+              event.target.value = "";
               setFile(null);
               if (chosen) {
                 read.mutate(chosen, {

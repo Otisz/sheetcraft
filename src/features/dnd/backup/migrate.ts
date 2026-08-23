@@ -35,15 +35,26 @@ const STEPS: Record<number, (record: LooseRecord) => LooseRecord> = {};
  * The version is stamped last, from `CURRENT_SCHEMA_VERSION` rather than from
  * whatever the file claimed, so a record that has been walked says so.
  */
-export function migrateCharacter(record: unknown, fromVersion: number): unknown {
+export function migrateCharacter(
+  record: unknown,
+  fromVersion: number,
+  /**
+   * The chain to walk. Injected only so the walk itself is testable while
+   * `STEPS` is legitimately empty — the machinery has to be proven BEFORE a
+   * real migration depends on it, or the first one lands on code nothing has
+   * ever run. Production callers pass nothing.
+   */
+  steps: Record<number, (record: LooseRecord) => LooseRecord> = STEPS,
+  toVersion: number = CURRENT_SCHEMA_VERSION,
+): unknown {
   if (typeof record !== "object" || record === null) {
     return record;
   }
 
   let migrated = record as LooseRecord;
-  for (let version = fromVersion; version < CURRENT_SCHEMA_VERSION; version++) {
-    migrated = STEPS[version]?.(migrated) ?? migrated;
+  for (let version = fromVersion; version < toVersion; version++) {
+    migrated = steps[version]?.(migrated) ?? migrated;
   }
 
-  return { ...migrated, schemaVersion: CURRENT_SCHEMA_VERSION };
+  return { ...migrated, schemaVersion: toVersion };
 }

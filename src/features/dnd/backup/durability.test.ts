@@ -3,6 +3,7 @@ import {
   backupAge,
   isStandalone,
   LAST_EXPORTED_KEY,
+  needsBackupWarning,
   readLastExportedAt,
   recordExport,
   requestPersistence,
@@ -40,8 +41,11 @@ describe("backupAge", () => {
     expect(backupAge(new Date(NOW.getTime() - 60_000), NOW)).toEqual({ state: "fresh", days: 0 });
   });
 
-  it("goes stale past the 7-day mark, which mirrors WebKit's own clock", () => {
-    expect(backupAge(daysBefore(STALE_AFTER_DAYS), NOW).state).toBe("fresh");
+  it("goes stale at the 7-day mark, which mirrors WebKit's own clock", () => {
+    expect(backupAge(daysBefore(STALE_AFTER_DAYS - 1), NOW).state).toBe("fresh");
+    // At exactly the window, not a day after it: the warning has to arrive
+    // before the deletion it warns about, not with it.
+    expect(backupAge(daysBefore(STALE_AFTER_DAYS), NOW)).toEqual({ state: "stale", days: 7 });
     expect(backupAge(daysBefore(STALE_AFTER_DAYS + 1), NOW)).toEqual({ state: "stale", days: 8 });
   });
 
@@ -101,5 +105,32 @@ describe("requestPersistence", () => {
 
   it("is false where the API does not exist", async () => {
     expect(await requestPersistence({})).toBe(false);
+  });
+});
+
+describe("needsBackupWarning", () => {
+  const stale = backupAge(daysBefore(10), NOW);
+  const fresh = backupAge(daysBefore(1), NOW);
+
+  it("stays quiet when there is nothing to lose", () => {
+    expect(needsBackupWarning(stale, null, null)).toBe(false);
+  });
+
+  it("stays quiet while the backup is fresh", () => {
+    expect(needsBackupWarning(fresh, NOW, daysBefore(1))).toBe(false);
+  });
+
+  it("stays quiet when the stale backup already contains every change", () => {
+    // Edited nine days ago, backed up eight days ago: old, but nothing is
+    // missing from the file. A warning here is the one users learn to ignore.
+    expect(needsBackupWarning(stale, daysBefore(9), daysBefore(8))).toBe(false);
+  });
+
+  it("warns when a change came after the last backup", () => {
+    expect(needsBackupWarning(stale, daysBefore(2), daysBefore(8))).toBe(true);
+  });
+
+  it("warns when there is a character and no backup at all", () => {
+    expect(needsBackupWarning(backupAge(null, NOW), daysBefore(1), null)).toBe(true);
   });
 });

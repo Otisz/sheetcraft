@@ -6,6 +6,7 @@ import { refIndex, refSource } from "@/features/dnd/db/resolve-ref";
 import type { CharacterEquipmentEntry, CharacterRecord, HomebrewEntry, Ref } from "@/features/dnd/db/schema";
 import type { HomebrewType } from "@/features/dnd/homebrew/types";
 import { HOMEBREW_TYPE_ORDER, tableFor } from "@/features/dnd/homebrew/types";
+import type { ValidationIssue } from "@/features/dnd/homebrew/validate";
 import { validateEntry } from "@/features/dnd/homebrew/validate";
 
 /**
@@ -121,6 +122,23 @@ function rewriteCharacterRefs(character: CharacterRecord, renames: Map<string, s
 }
 
 /**
+ * Whether every complaint is about a field the schema simply does not know.
+ *
+ * The vendored schemas are `z.strictObject` deliberately: an upstream field
+ * addition must hard-fail the *vendoring* pipeline rather than degrade
+ * silently. That rule is right there and wrong here. On import the file may
+ * have been written by a newer build of Sheetcraft, and refusing somebody's
+ * only copy of their data over a field this build has not learned about yet is
+ * the worse failure by far — especially as the entry is then written back
+ * intact on the next export.
+ *
+ * Anything else — a wrong type, a missing required field — still refuses.
+ */
+function onlyUnknownKeys(issues: ValidationIssue[]): boolean {
+  return issues.length > 0 && issues.every((issue) => issue.message.startsWith("Unrecognized key"));
+}
+
+/**
  * Plans the homebrew half: a free index per entry, validated against the same
  * vendored schema every other write goes through.
  *
@@ -154,7 +172,7 @@ async function planHomebrew(
       // entry fail the very schema it was stored under.
       const { updatedAt: _writtenAt, ...candidate } = entry;
       const validated = validateEntry(type, { ...candidate, index });
-      if (!validated.ok) {
+      if (!validated.ok && !onlyUnknownKeys(validated.issues)) {
         const detail = validated.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ");
         throw new Error(`Homebrew ${type} "${entry.index}" in this backup is not valid — ${detail}`);
       }
@@ -162,7 +180,12 @@ async function planHomebrew(
       entries.push({
         type,
         from: entry.index,
-        entry: { ...validated.entry, index, updatedAt: new Date() },
+        // The CANDIDATE's fields, not the schema's parsed output. The vendored
+        // schemas are strict, so parsing would drop any field a newer build
+        // wrote — and a round-trip through this build would then silently strip
+        // data the user still has elsewhere. Validation is kept for what it is
+        // good at, catching a genuinely broken entry.
+        entry: { ...candidate, index, updatedAt: new Date() },
       });
 
       if (index !== entry.index) {
