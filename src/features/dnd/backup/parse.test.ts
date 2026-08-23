@@ -129,6 +129,14 @@ describe("parseBackup", () => {
     expect((result.file.characters[0] as Record<string, unknown>).futureField).toBe("kept");
   });
 
+  it("preserves an unknown envelope field, so a newer build's data is written back", () => {
+    const result = parseText(envelope({ futureEnvelopeField: "kept" }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.file as Record<string, unknown>).futureEnvelopeField).toBe("kept");
+  });
+
   it("refuses a character missing the fields the sheet cannot render without", () => {
     const { classRef: _classRef, ...withoutClass } = CHARACTER;
     const result = parseText(envelope({ characters: [withoutClass] }));

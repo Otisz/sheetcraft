@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { collectBackup } from "@/features/dnd/backup/collect";
 import type { DeliveryOutcome } from "@/features/dnd/backup/deliver";
 import { backupFile, deliverBackup } from "@/features/dnd/backup/deliver";
@@ -36,62 +36,117 @@ export const backupKeys = {
 export type DurabilityState = {
   installed: boolean;
   age: BackupAge;
+  /** The raw timestamp, which the stale banner compares against the last edit. */
+  lastExportedAt: Date | null;
 };
 
 export function useDurability() {
   return useQuery<DurabilityState>({
     queryKey: backupKeys.durability(),
-    queryFn: async () => ({
-      installed: isStandalone(),
-      age: backupAge(await readLastExportedAt()),
-    }),
+    queryFn: async () => {
+      const lastExportedAt = await readLastExportedAt();
+      return { installed: isStandalone(), age: backupAge(lastExportedAt), lastExportedAt };
+    },
   });
 }
 
 /**
  * Running an export.
  *
- * **The whole shape of this hook is decided by transient activation.** Web
- * Share requires it (spec step 6), and awaiting IndexedDB inside the tap
- * handler consumes it — `share()` then rejects with `NotAllowedError` and the
- * user gets nothing. So the tap handler must not be the thing that reads the
- * database.
+ * **The shape of this hook is decided entirely by transient activation.** Web
+ * Share requires it (spec step 6), and it is consumed by the first `await` in
+ * the tap handler's call stack — so a handler that reads IndexedDB and *then*
+ * calls `share()` gets `NotAllowedError`, and the user gets nothing.
  *
- * `exportBackup` therefore returns a promise the CALLER never awaits before
- * calling `deliverBackup`; instead the read, the `File` construction and the
- * delivery all happen inside one already-activated call stack, with the `File`
- * built from data before the first `await` that could matter. React Query
- * would otherwise interpose its own async boundary, which is why the delivery
- * is not a mutation over the collected data but a single function.
+ * The fix is to have the data **before** the tap. `useExportBackup` keeps the
+ * backup prepared in a query, refreshed whenever the characters change, and
+ * `share` is a plain synchronous function that reads that cache and calls
+ * `deliverBackup` with a `File` built on the spot. Nothing is awaited between
+ * the tap and `share()`.
+ *
+ * The stamping and invalidation that follow are deliberately fired off the
+ * returned promise rather than awaited before delivery — they are bookkeeping,
+ * and putting them first would reintroduce the very await this exists to avoid.
  */
 export type ExportOutcome = { outcome: DeliveryOutcome; filename: string };
 
-export function useExportBackup() {
-  const queryClient = useQueryClient();
-
-  return useMutation<ExportOutcome, Error, { characterId?: string; characterName?: string }>({
-    mutationFn: async ({ characterId, characterName }) => {
-      const file = await collectBackup(characterId);
-      const filename = backupFilename(new Date(file.exportedAt), characterName);
-
-      // Built synchronously from data already in hand — the last `await` above
-      // is the read, and nothing between here and `share()` touches storage.
-      const outcome = await deliverBackup(backupFile(file, filename));
-
-      // A cancelled share is not a backup. Stamping it would tell the user
-      // their data is safe when no file was ever written anywhere.
-      if (outcome !== "cancelled") {
-        await recordExport();
-      }
-
-      // Opportunistic and never surfaced: a `false` is normal on iOS in a tab
-      // and not actionable. See CONTEXT.md § Installed.
-      void requestPersistence();
-
-      return { outcome, filename };
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupKeys.durability() }),
+/** The backup, kept warm so a tap never has to wait for IndexedDB. */
+function usePreparedBackup(characterId?: string) {
+  return useQuery({
+    queryKey: [...backupKeys.all, "prepared", characterId ?? "all"] as const,
+    queryFn: () => collectBackup(characterId),
+    // Rebuilt on demand rather than served stale: an export must contain what
+    // the database holds NOW, and a backup missing the last ten minutes of play
+    // is the kind of wrong nobody notices until they need it.
+    gcTime: 0,
+    staleTime: 0,
   });
+}
+
+export type ExportController = {
+  /** Synchronous, and safe to call straight from `onClick`. */
+  share: () => void;
+  /** False while the backup is still being prepared — the button waits, the tap does not. */
+  ready: boolean;
+  pending: boolean;
+  error: boolean;
+  result: ExportOutcome | null;
+};
+
+export function useExportBackup({
+  characterId,
+  characterName,
+}: {
+  characterId?: string;
+  characterName?: string;
+} = {}): ExportController {
+  const queryClient = useQueryClient();
+  const prepared = usePreparedBackup(characterId);
+  const [result, setResult] = useState<ExportOutcome | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState(false);
+
+  const share = useCallback(() => {
+    const file = prepared.data;
+    if (!file) {
+      return;
+    }
+
+    const filename = backupFilename(new Date(file.exportedAt), characterName);
+    setPending(true);
+    setError(false);
+
+    // Built and handed over synchronously: this is the same call stack the tap
+    // started, with no `await` in front of it, so the activation is intact.
+    let delivery: Promise<DeliveryOutcome>;
+    try {
+      delivery = deliverBackup(backupFile(file, filename));
+    } catch {
+      setPending(false);
+      setError(true);
+      return;
+    }
+
+    void delivery
+      .then(async (outcome) => {
+        setResult({ outcome, filename });
+
+        // A cancelled share is not a backup. Stamping it would tell the user
+        // their data is safe when no file was ever written anywhere.
+        if (outcome !== "cancelled") {
+          await recordExport();
+          void queryClient.invalidateQueries({ queryKey: backupKeys.durability() });
+        }
+
+        // Opportunistic and never surfaced: a `false` is normal on iOS in a tab
+        // and not actionable. See CONTEXT.md § Installed.
+        void requestPersistence();
+      })
+      .catch(() => setError(true))
+      .finally(() => setPending(false));
+  }, [prepared.data, characterName, queryClient]);
+
+  return { share, ready: prepared.data !== undefined, pending, error, result };
 }
 
 /**
@@ -119,19 +174,9 @@ export function useImportBackup() {
       void queryClient.invalidateQueries({ queryKey: characterKeys.all });
       void queryClient.invalidateQueries({ queryKey: homebrewKeys.all });
       void queryClient.invalidateQueries({ queryKey: contentKeys.all });
+      // Including the prepared backup: it is a snapshot, and one taken before
+      // an import would export the database as it was.
+      void queryClient.invalidateQueries({ queryKey: backupKeys.all });
     },
   });
-}
-
-/**
- * Asks for persistent storage once, on a real gesture.
- *
- * Chromium grants it far more readily after a user interaction, and the answer
- * is deliberately dropped on the floor here rather than returned: nothing in
- * the UI is allowed to depend on it.
- */
-export function useOpportunisticPersistence() {
-  return useCallback(() => {
-    void requestPersistence();
-  }, []);
 }

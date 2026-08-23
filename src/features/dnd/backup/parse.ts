@@ -168,6 +168,11 @@ export function parseBackup(text: string): ParseResult {
   return {
     ok: true,
     file: {
+      // Spread first so any unknown TOP-LEVEL key a newer build wrote survives
+      // and is written back on the next export. The known fields below then
+      // overwrite it, because those are the ones this build has an opinion
+      // about.
+      ...(raw as Record<string, unknown>),
       format: BACKUP_FORMAT,
       formatVersion: envelope.data.formatVersion,
       schemaVersion: CURRENT_SCHEMA_VERSION,

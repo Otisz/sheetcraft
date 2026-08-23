@@ -246,9 +246,18 @@ from Dexie's `version().upgrade()`, because a file's records never pass through 
 arrive as plain objects and land in a database already at the current version.
 
 Validation is **loose where the schema is loose and strict where the sheet would break**. Unknown
-fields survive a round-trip; a character missing `classRef` does not. Homebrew goes through
-`validateEntry` — the same gate the forms and the JSON editor pass — with `updatedAt` stripped
-first, since it is storage bookkeeping and the vendored schemas are `z.strictObject`.
+fields survive a round-trip — at the envelope, on characters, and on homebrew entries — and are
+written back on the next export; a character missing `classRef` does not survive. Homebrew goes
+through `validateEntry`, the same gate the forms and the JSON editor pass, with `updatedAt`
+stripped first, since it is storage bookkeeping and the vendored schemas are `z.strictObject`.
+
+That strictness is **relaxed for unknown keys on this path only**. The vendored schemas hard-fail an
+unrecognised field by design, because an upstream addition must break the *vendoring* pipeline
+rather than degrade silently — but on import the file may come from a newer build of Sheetcraft, and
+refusing somebody's only copy of their data over a field this build has not learned about yet is the
+worse failure. A wrong type or a missing required field still refuses. The stored entry is the
+candidate's own fields, not the schema's parsed output, or parsing would strip exactly what this
+rule exists to keep.
 
 Import **never overwrites** — every imported character gets a fresh id and a `(imported)` name
 suffix, applied **unconditionally rather than only on a name collision**: an import is always a
@@ -265,11 +274,17 @@ to nothing.
 
 ### Getting the file off the device
 
-**Web Share first, `<a download>` as the fallback.** The one rule the whole delivery module is
-shaped around: **serialise before the tap handler awaits anything.** Web Share needs transient
-activation, and an `await` on IndexedDB consumes it — `share()` then rejects with `NotAllowedError`.
-`deliverBackup` therefore takes an already-built `File`, so there is nowhere inside it to await
-storage.
+**Web Share first, `<a download>` as the fallback.** The one rule the whole delivery path is shaped
+around: **nothing may be awaited between the tap and `share()`.** Web Share needs transient
+activation, and the first `await` in the handler's call stack consumes it — `share()` then rejects
+with `NotAllowedError` and the user gets nothing.
+
+Two things enforce it. `deliverBackup` takes an **already-built `File`**, so there is nowhere inside
+it to await storage. And the backup is **prepared ahead of the tap** — `useExportBackup` keeps it in
+a query and hands the button a synchronous `share()`; the button is disabled until it is ready, so
+the wait happens before the tap rather than inside it. Reading IndexedDB inside the handler and then
+sharing is the bug this shape exists to make unrepresentable, and it is the one both grillings spent
+the most words on.
 
 Three more, each from a specific finding: a **successful share is the end of it** (falling through
 to a download leaves two copies to reconcile); **`AbortError` means the user cancelled**, so it does
@@ -282,11 +297,17 @@ only that the files array is non-empty.
 
 ### Backup age
 
-`dnd_meta.lastExportedAt`. Past **7 days** — WebKit's own clock — a backup is stale. The banner
-needs *both* staleness and something to lose: it is gated on the most recent character `updatedAt`,
-derived from the records rather than tracked separately, because a second timestamp every writer
-must maintain is a second thing that goes stale. A prompt users learn to dismiss on sight is worse
-than one that arrives when something is actually at risk.
+`dnd_meta.lastExportedAt`. At **7 days** — WebKit's own clock — a backup is stale; the warning has
+to arrive before the deletion it warns about, not with it.
+
+The banner needs *both* halves, which is what `needsBackupWarning` states: stale, **and** carrying a
+change the backup does not have (`lastChangeAt > lastExportedAt`). An old backup of data that has
+not moved since is not a risk, and a banner that fires regardless is the one users learn to dismiss
+on sight. "A change was just made" is expressed as unbacked-up work existing rather than as a
+recency window — a character edited eight days ago and never backed up is in exactly the danger
+this warns about. The last change is the most recent character `updatedAt`, derived from the records
+rather than tracked separately, because a second timestamp every writer must maintain is a second
+thing that goes stale.
 
 ## Currency
 

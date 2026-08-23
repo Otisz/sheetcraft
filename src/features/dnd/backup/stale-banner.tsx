@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ExportButton } from "@/features/dnd/backup/backup-panel";
+import { needsBackupWarning } from "@/features/dnd/backup/durability";
 import { useDurability } from "@/features/dnd/backup/queries";
 
 /**
@@ -18,16 +19,16 @@ export function StaleBackupBanner({ lastChangeAt }: { lastChangeAt: Date | null 
   const durability = useDurability();
   const [dismissed, setDismissed] = useState(false);
 
-  if (dismissed || !durability.data || lastChangeAt === null) {
+  if (dismissed || !durability.data) {
     return null;
   }
 
-  const { age } = durability.data;
+  const { age, lastExportedAt } = durability.data;
 
-  // `never` counts as stale the moment anything exists to lose: a user who has
-  // made characters and has no backup at all is the case this whole feature
-  // exists for.
-  if (age.state === "fresh") {
+  // Both halves: stale AND carrying a change the backup does not have. An old
+  // backup of data that has not moved is not a risk, and a banner that fires
+  // regardless is the one users learn to dismiss on sight.
+  if (!needsBackupWarning(age, lastChangeAt, lastExportedAt)) {
     return null;
   }
 
