@@ -46,17 +46,33 @@ function refsAt(character: CharacterRecord, location: CharacterRefLocation): (Re
 }
 
 /**
- * Whether one character points at `homebrew:<index>` of this type.
+ * The homebrew indices one character points at, of one type.
  *
- * Both halves of the ref are compared through `resolveRef`'s accessors rather
- * than by string-matching `homebrew:${index}`: the grammar is parsed in
- * exactly one place, and matching on the index alone would refuse to delete
- * `homebrew:human` because somebody is a `catalog:human`.
+ * Both halves of every ref go through `resolveRef`'s accessors rather than a
+ * string-match on `homebrew:${index}`: the grammar is parsed in exactly one
+ * place, and matching on the index alone would confuse `homebrew:human` with
+ * `catalog:human`.
+ *
+ * Exported because two questions need the same traversal from opposite ends —
+ * "who uses this entry" (the delete block) and "what does this character use"
+ * (what an export must embed). A second walk of the same locations is a second
+ * thing to keep in step with `referencedBy`, and the one that drifted would
+ * fail silently: a delete that no longer blocks, or a backup missing the
+ * homebrew that makes it restorable.
  */
-function referencesEntry(character: CharacterRecord, type: HomebrewType, index: string): boolean {
-  return HOMEBREW_SPECS[type].referencedBy.some((location) =>
-    refsAt(character, location).some((ref) => refSource(ref) === "homebrew" && refIndex(ref) === index),
+export function homebrewRefsOf(character: CharacterRecord, type: HomebrewType): string[] {
+  const indices = HOMEBREW_SPECS[type].referencedBy.flatMap((location) =>
+    refsAt(character, location)
+      .filter((ref) => refSource(ref) === "homebrew")
+      .map((ref) => refIndex(ref))
+      .filter((index): index is string => index !== null),
   );
+
+  return [...new Set(indices)];
+}
+
+function referencesEntry(character: CharacterRecord, type: HomebrewType, index: string): boolean {
+  return homebrewRefsOf(character, type).includes(index);
 }
 
 /**

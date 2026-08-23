@@ -11,6 +11,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { ExportButton } from "@/features/dnd/backup";
 import { ABILITIES, type CharacterRecord, type Modifier, type Ref } from "@/features/dnd/db/schema";
 import type { Derived, DerivedTarget } from "@/features/dnd/derive";
 import { derive } from "@/features/dnd/derive";
@@ -167,9 +168,10 @@ function Identity({ character, names }: { character: CharacterRecord; names: Par
 }
 
 /**
- * Edit · Duplicate · Delete. All three belong to later tickets; the menu ships
- * now because it is the *mechanism* that keeps character data off the play
- * surface, and a play screen with no door to editing is not the design.
+ * Export · Edit · Duplicate · Delete. Export is live; the other three belong to
+ * later tickets. The menu ships regardless because it is the *mechanism* that
+ * keeps character data off the play surface, and a play screen with no door to
+ * editing is not the design.
  */
 function CharacterMenu({
   character,
@@ -188,6 +190,18 @@ function CharacterMenu({
           <DrawerDescription>Editing this character lives here, off the play surface.</DrawerDescription>
         </DrawerHeader>
         <DrawerFooter className="pt-4">
+          {/*
+            One character and the homebrew it references — the same format the
+            whole-library backup uses, and a subset of it rather than a second
+            shape. For sharing; "back up everything" on /dnd is the recovery
+            tool. See CONTEXT.md § Backup file.
+          */}
+          <ExportButton
+            label="Export this character"
+            characterId={character.id}
+            characterName={character.name}
+            variant="outline"
+          />
           {/*
             Disabled rather than absent: the menu is the answer to "where do I
             edit this?", and an empty drawer answers nothing. Each lands with

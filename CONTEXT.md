@@ -240,10 +240,53 @@ homebrew entries they reference**, so a restore onto a wiped device produces no 
 Catalog refs (`catalog:human`) are **not** embedded; they resolve against the importing device's SRD.
 
 Carries two versions: `formatVersion` (the envelope) and `schemaVersion` (the records inside).
-A newer `formatVersion` is **refused**, never guessed at.
+A newer `formatVersion` is **refused**, never guessed at. An older one migrates forward through
+`backup/migrate.ts` — a chain keyed by the version each step migrates *from*, deliberately separate
+from Dexie's `version().upgrade()`, because a file's records never pass through that path: they
+arrive as plain objects and land in a database already at the current version.
+
+Validation is **loose where the schema is loose and strict where the sheet would break**. Unknown
+fields survive a round-trip; a character missing `classRef` does not. Homebrew goes through
+`validateEntry` — the same gate the forms and the JSON editor pass — with `updatedAt` stripped
+first, since it is storage bookkeeping and the vendored schemas are `z.strictObject`.
 
 Import **never overwrites** — every imported character gets a fresh id and a `(imported)` name
-suffix. There is no undo and no server copy, so a visible duplicate beats a silent overwrite.
+suffix, applied **unconditionally rather than only on a name collision**: an import is always a
+copy, and one that looks like the original is exactly what the never-overwrite rule exists to
+avoid. Imported homebrew whose index is taken becomes `azureborn-2`, and the imported characters
+are rewritten to point at their own copy. `createdAt` is kept and `updatedAt` is stamped: the
+character really was created when the file says, but this copy arrived now, and the list sorts by
+`updatedAt`.
+
+Everything is planned — reads, slug resolution, validation — **before** the write transaction opens,
+for the reason the [re-seed](#re-seed) does the same: awaiting a non-Dexie promise inside a Dexie
+transaction auto-commits it. What remains inside is writes only, so a failure rolls the import back
+to nothing.
+
+### Getting the file off the device
+
+**Web Share first, `<a download>` as the fallback.** The one rule the whole delivery module is
+shaped around: **serialise before the tap handler awaits anything.** Web Share needs transient
+activation, and an `await` on IndexedDB consumes it — `share()` then rejects with `NotAllowedError`.
+`deliverBackup` therefore takes an already-built `File`, so there is nowhere inside it to await
+storage.
+
+Three more, each from a specific finding: a **successful share is the end of it** (falling through
+to a download leaves two copies to reconcile); **`AbortError` means the user cancelled**, so it does
+not fall back and does not stamp a backup that never happened; and the object URL is **revoked
+late**, because an immediate revoke can silently cancel the download.
+
+`<a download>` has worked on iOS since 13 — the "iOS ignores download" advice is stale. The belief
+that iOS blocks sharing `.json` is also unsupported by WebKit's source: `Navigator::canShare` checks
+only that the files array is non-empty.
+
+### Backup age
+
+`dnd_meta.lastExportedAt`. Past **7 days** — WebKit's own clock — a backup is stale. The banner
+needs *both* staleness and something to lose: it is gated on the most recent character `updatedAt`,
+derived from the records rather than tracked separately, because a second timestamp every writer
+must maintain is a second thing that goes stale. A prompt users learn to dismiss on sight is worse
+than one that arrives when something is actually at risk.
 
 ## Currency
 

@@ -11,7 +11,9 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { BackupPanel, InstallNudge, MigrationRecovery, StaleBackupBanner } from "@/features/dnd/backup";
 import type { CharacterSummary } from "@/features/dnd/characters/list";
+import { lastChangeAt } from "@/features/dnd/characters/list";
 import { useCharacterList, useDeleteCharacter, useRenameCharacter } from "@/features/dnd/characters/queries";
 import { normalizeCharacterName } from "@/features/dnd/characters/rename";
 import { cn, THUMB_ACTION } from "@/lib/utils";
@@ -67,10 +69,29 @@ export function CharacterList() {
       </header>
 
       {rows.length === 0 ? (
-        <EmptyState />
+        <>
+          {/*
+            Before any character exists — the only safe moment. Installing does
+            not copy IndexedDB, so a nudge that waited for a character to exist
+            would be inviting the user to strand it. See CONTEXT.md § Installed.
+          */}
+          <div className="flex flex-col gap-3 px-4 pb-2">
+            <InstallNudge characterCount={0} />
+            <MigrationRecovery characterCount={0} />
+          </div>
+          <EmptyState />
+        </>
       ) : (
         <>
-          <ul className="flex flex-col gap-2 px-4 pb-28">
+          <div className="flex flex-col gap-3 px-4 pb-4">
+            {/*
+              `lastChange` is the most recent `updatedAt` in the list, which is
+              what makes this banner fire on a real edit rather than on every
+              visit. See `StaleBackupBanner`.
+            */}
+            <StaleBackupBanner lastChangeAt={lastChangeAt(rows)} />
+          </div>
+          <ul className="flex flex-col gap-2 px-4">
             {rows.map((character) => (
               <CharacterRow
                 key={character.id}
@@ -79,6 +100,9 @@ export function CharacterList() {
               />
             ))}
           </ul>
+          <div className="px-4 pt-6 pb-28">
+            <BackupPanel characterCount={rows.length} />
+          </div>
           {/*
             Bottom-anchored and safe-area padded: the primary action belongs
             under the thumb, not at the top of the screen.
