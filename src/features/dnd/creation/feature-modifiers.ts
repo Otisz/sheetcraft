@@ -1,4 +1,4 @@
-import { modifierId } from "@/features/dnd/db/modifier-id";
+import { mergeModifiers, modifierId } from "@/features/dnd/db/modifier-id";
 import type { Modifier } from "@/features/dnd/db/schema";
 import type { Target } from "@/features/dnd/derive";
 
@@ -182,30 +182,13 @@ export function featureModifiers(features: readonly FeatureSource[]): Modifier[]
 
 /**
  * Re-derives a character's feature records against the features they currently
- * have — a **merge, not a replace**.
+ * have.
  *
- * Three rules, and each one is a bug avoided:
- *
- * - **The toggle survives.** A barbarian who levels to 3 does not find
- *   Unarmored Defense switched back off. The `enabled` flag is the player's,
- *   and re-derivation is not a player action.
- * - **Records for lost features go.** A class change takes its features with
- *   it, and a record whose feature the character no longer has is one nothing
- *   on the sheet can explain.
- * - **Everything else is untouched.** Racial bonuses, equipment, overrides and
- *   the player's own homebrew records all live in the same list and none of
- *   them is this function's business — which is also what makes a homebrew
- *   class shipping its own records work with nothing special-cased for SRD.
+ * The merge and its three rules are `mergeModifiers`; what this adds is the
+ * scope — every record in the `feature:` namespace, whichever feature wrote it.
+ * Records outside it, including the homebrew side-car's, are left alone with
+ * nothing special-cased either way.
  */
 export function syncFeatureModifiers(modifiers: readonly Modifier[], features: readonly FeatureSource[]): Modifier[] {
-  const derived = featureModifiers(features);
-  const enabledBefore = new Map(modifiers.filter(isFeatureRecord).map((modifier) => [modifier.id, modifier.enabled]));
-
-  const kept = modifiers.filter((modifier) => !isFeatureRecord(modifier));
-  const rederived = derived.map((modifier) => ({
-    ...modifier,
-    enabled: enabledBefore.get(modifier.id) ?? modifier.enabled,
-  }));
-
-  return [...kept, ...rederived];
+  return mergeModifiers(modifiers, isFeatureRecord, featureModifiers(features));
 }

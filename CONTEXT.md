@@ -119,6 +119,12 @@ User-authored content conforming to the **same schema as a catalog entry**, so i
 identically in derivation and character creation. Stored in parallel tables
 (`dnd_catalog_races` / `dnd_homebrew_races`).
 
+A stored row is that schema **plus two side-car keys the schema never sees**: `updatedAt` (edit
+bookkeeping) and `modifiers` (what the entry does to a character that takes it). The vendored
+schemas are `z.strictObject`, so anything inside the payload has to be a field the SRD declares;
+these sit beside it. `stripSideCar` in `homebrew/validate.ts` is the one place the split is made.
+A catalog row has no side-car, which is what keeps the two interchangeable. See ADR-0006.
+
 ## Homebrew authoring tiers
 
 Which editing surface a homebrew type gets, driven by measured entry complexity:
@@ -127,7 +133,8 @@ Which editing surface a homebrew type gets, driven by measured entry complexity:
   a phone form.
 - **Minimal form** — `subclass`. Name, parent class, level features as prose + modifier records.
   Not the full schema (worst case 625 leaves); shipped anyway because the SRD has only one subclass
-  per class.
+  per class. The modifier records are authored here only; the other six types reach the same
+  side-car through the JSON editor.
 - **JSON editor only** — `class` (190 leaves, 11 deep) and `background` (168). A phone form for
   these is not buildable. Zod-validated paste, errors reported per path.
 
@@ -142,7 +149,9 @@ The prefix selects the table; the suffix is the entry's `index`.
 Parsed in exactly **one** place — `resolveRef(type, ref)`. Nothing else splits the string.
 
 Homebrew **edits apply live** — a character references by id, so changing an entry recomputes every
-character using it. Edits show which characters are affected (informational, non-blocking); deletes
+character using it. An entry's own modifier records are the one thing that cannot work that way,
+because `enabled` is stored player state: they are stored on the character and re-synced by
+`saveHomebrewEntry` on every edit, preserving the toggle. See ADR-0006. Edits show which characters are affected (informational, non-blocking); deletes
 are **blocked** while referenced, so a homebrew ref never dangles. The asymmetry is deliberate: an
 edit changes a referent that still exists, a delete would strand the character.
 
@@ -350,8 +359,10 @@ item, or player choice changes a number.
   arithmetically `Math.max`. Several `set`s resolve last-wins; `set` is the one non-commutative op.
 - **value** — a number, or a **reference** (`{ref:'mod.con'}`, `{ref:'proficiencyBonus'}`) resolved
   at derivation time so it never goes stale.
-- **source** — namespaced provenance (`feature:*`, `equip:*`, `item:*`, `override`), powering the
-  "why is my AC 17?" trace.
+- **source** — namespaced provenance (`feature:*`, `equip:*`, `item:*`, `race:*`,
+  `homebrew:<type>:<index>`, `override`), powering the "why is my AC 17?" trace. A homebrew source
+  names the TYPE as well as the index, because indexes are scoped per table and a subclass and a
+  race may share one.
 - **enabled** — the toggle. See *Toggle*.
 
 Defined in [Design the modifier record and derivation engine](https://github.com/Otisz/sheetcraft/issues/143).

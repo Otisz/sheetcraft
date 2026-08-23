@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildCandidate, draftFromEntry, emptyFormDraft, type FormDraft } from "@/features/dnd/homebrew/drafts";
+import {
+  buildCandidate,
+  draftFromEntry,
+  emptyFormDraft,
+  emptyModifierDraft,
+  type FormDraft,
+} from "@/features/dnd/homebrew/drafts";
 import { validateEntry } from "@/features/dnd/homebrew/validate";
 
 /**
@@ -189,6 +195,69 @@ describe("buildCandidate — subclasses (minimal form)", () => {
 
     expect(buildCandidate("subclasses", draft).desc).toEqual(["Level 3: Storm Aura.", "Level 6: Storm Soul."]);
   });
+
+  /**
+   * The line #165 deferred. The records go in the side-car, so the entry is
+   * still accepted by the strict vendored schema. See ADR-0006.
+   */
+  it("authors modifier records into the side-car", () => {
+    const draft = {
+      ...filled,
+      modifiers: [{ target: "ac", op: "add", value: "1", label: "Storm Ward" }],
+    };
+
+    expect(buildCandidate("subclasses", draft).modifiers).toEqual([
+      { target: "ac", op: "add", value: 1, label: "Storm Ward" },
+    ]);
+  });
+
+  it("builds an entry its schema still accepts once records are on it", () => {
+    const draft = { ...filled, modifiers: [{ target: "ac", op: "add", value: "1", label: "Storm Ward" }] };
+
+    expect(validateEntry("subclasses", { ...buildCandidate("subclasses", draft), index: "storm-herald" }).ok).toBe(
+      true,
+    );
+  });
+
+  /** A word from the reference vocabulary becomes a `{ref}`, not a zero. */
+  it("reads a reference value as a reference", () => {
+    const draft = { ...filled, modifiers: [{ target: "ac", op: "add", value: "mod.con", label: "Storm Ward" }] };
+
+    expect((buildCandidate("subclasses", draft).modifiers as { value: unknown }[])[0].value).toEqual({
+      ref: "mod.con",
+    });
+  });
+
+  /**
+   * An entry that changes no number must be identical on disk to a catalog
+   * row, or "catalog and homebrew are interchangeable" stops being true.
+   */
+  it("omits the key entirely when nothing was authored", () => {
+    expect(Object.hasOwn(buildCandidate("subclasses", filled), "modifiers")).toBe(false);
+  });
+
+  it("omits the key when every row was left blank", () => {
+    const draft = { ...filled, modifiers: [emptyModifierDraft(), emptyModifierDraft()] };
+
+    expect(Object.hasOwn(buildCandidate("subclasses", draft), "modifiers")).toBe(false);
+  });
+
+  /**
+   * A half-filled row is KEPT, so it comes back as a validation issue rather
+   * than being silently discarded — the same contract every other field has.
+   */
+  it("keeps a half-filled row so the author is told what is missing", () => {
+    const draft = { ...filled, modifiers: [{ target: "ac", op: "add", value: "", label: "" }] };
+
+    expect(buildCandidate("subclasses", draft).modifiers).toHaveLength(1);
+  });
+
+  it("refuses a half-filled row at validation, naming the fields", () => {
+    const draft = { ...filled, modifiers: [{ target: "ac", op: "add", value: "", label: "" }] };
+    const result = validateEntry("subclasses", { ...buildCandidate("subclasses", draft), index: "storm-herald" });
+
+    expect(!result.ok && result.issues.map((one) => one.path)).toEqual(["modifiers.0.value", "modifiers.0.label"]);
+  });
 });
 
 /**
@@ -266,6 +335,9 @@ describe("draftFromEntry", () => {
         desc: ["Level 3: Storm Aura."],
         subclass_levels: "/api/subclasses/storm-herald/levels",
         url: "/api/subclasses/storm-herald",
+        // The side-car round-trips with the rest: an entry opened to look at
+        // and saved untouched must not lose its records.
+        modifiers: [{ target: "ac", op: "add", value: 1, label: "Storm Ward" }],
       },
     ],
   ] as const)("round-trips a %s through the draft unchanged", (type, entry) => {

@@ -20,7 +20,7 @@ import { useDeleteHomebrew, useHomebrewEntryForEditing, useSaveHomebrew } from "
 import type { ReferencingCharacter } from "@/features/dnd/homebrew/references";
 import { entryName, HOMEBREW_SPECS, type HomebrewType } from "@/features/dnd/homebrew/types";
 import type { ValidationIssue } from "@/features/dnd/homebrew/validate";
-import { parseHomebrewJson } from "@/features/dnd/homebrew/validate";
+import { parseHomebrewJson, stripSideCar } from "@/features/dnd/homebrew/validate";
 import { cn, THUMB_ACTION } from "@/lib/utils";
 
 /**
@@ -87,7 +87,7 @@ function Editor({
    * an edit must open showing what is actually stored, including the fields
    * the form does not have.
    */
-  const [json, setJson] = useState<string>(() => (entry ? JSON.stringify(stripBookkeeping(entry), null, 2) : ""));
+  const [json, setJson] = useState<string>(() => (entry ? JSON.stringify(editorBuffer(entry), null, 2) : ""));
 
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [affected, setAffected] = useState<ReferencingCharacter[] | null>(null);
@@ -181,14 +181,24 @@ function Editor({
 }
 
 /**
- * The bookkeeping the JSON editor must not show. `updatedAt` is a `Date` the
- * repository re-stamps on every write; leaving it in the buffer would invite
- * someone to edit a field that is not theirs, and it fails the strict schema
- * on the way back in.
+ * What the JSON editor opens on: the entry, minus the bookkeeping and plus the
+ * modifiers.
+ *
+ * `updatedAt` is a `Date` the repository re-stamps on every write, so showing
+ * it would invite someone to edit a field that is not theirs. `modifiers` is
+ * the opposite case — it is authored content, and the JSON editor is the only
+ * surface six of the seven types have for it, so it is shown and kept.
+ *
+ * Both go through `stripSideCar`, which is the one place that knows which keys
+ * are not catalog data. Re-attaching `modifiers` here rather than leaving it in
+ * `payload` is what keeps that list authoritative: a third side-car added later
+ * is hidden by default, which is the safe direction for a key nobody has
+ * decided is editable yet.
  */
-function stripBookkeeping(entry: HomebrewEntry): Record<string, unknown> {
-  const { updatedAt: _stamped, ...rest } = entry;
-  return rest;
+function editorBuffer(entry: HomebrewEntry): Record<string, unknown> {
+  const { payload, sideCar } = stripSideCar(entry);
+  const shown = payload as Record<string, unknown>;
+  return sideCar.modifiers === undefined ? shown : { ...shown, modifiers: sideCar.modifiers };
 }
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {

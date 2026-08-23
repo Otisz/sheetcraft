@@ -6,6 +6,7 @@ import { getDb } from "@/features/dnd/db/db";
 import type { Abil, CharacterRecord, Modifier, Ref } from "@/features/dnd/db/schema";
 import { ABILITIES } from "@/features/dnd/db/schema";
 import { derive, EMPTY_CONTEXT } from "@/features/dnd/derive";
+import { syncAllEntryModifiers } from "@/features/dnd/homebrew/entry-modifiers";
 
 /**
  * The repository seam over Dexie. Everything above it — routes, the sheet,
@@ -128,6 +129,16 @@ export async function createCharacter(
   // Seeded disabled by `featureModifiers`, so nothing here changes a number
   // until the player flips it.
   record.modifiers = syncFeatureModifiers(record.modifiers, await featureSources(record, db));
+
+  // The records authored ON the homebrew entries this character takes. A
+  // catalog entry carries none, so this is a no-op for an all-SRD character
+  // and nothing branches on where an entry came from. See ADR-0006.
+  //
+  // After the feature sync rather than before: the two write disjoint
+  // namespaces (`feature:` and `homebrew:`) so the order does not change the
+  // result, but running last means a homebrew subclass's records are present
+  // when `derive()` computes starting HP below.
+  record.modifiers = await syncAllEntryModifiers(record, db);
 
   // A new character starts at full health. Derived rather than summed here so
   // the CON modifier — including one arriving as a racial record — is counted

@@ -156,6 +156,94 @@ describe("backup round-trip", () => {
     expect(restored[0].raceRef).toBe("homebrew:azureborn");
   });
 
+  /**
+   * The side-car travels. A backup that quietly dropped an entry's modifier
+   * records would restore a subclass whose numeric effects had vanished — and
+   * the character would derive a different AC with nothing on the sheet saying
+   * why. See ADR-0006.
+   */
+  it("carries an entry's modifier records through export and import", async () => {
+    await saveHomebrewEntry(
+      "races",
+      { ...RACE, modifiers: [{ target: "speed", op: "add", value: 5, label: "Swift" }] },
+      undefined,
+      source,
+    );
+    await seedFullCharacter(source);
+
+    await importBackup(throughAFile(await collectBackup(undefined, source)), target);
+
+    const [restored] = await target.dnd_homebrew_races.toArray();
+    expect(restored.modifiers).toEqual([{ target: "speed", op: "add", value: 5, label: "Swift" }]);
+  });
+
+  /** The records reach the restored CHARACTER, not only the restored entry. */
+  it("restores the character's own copy of those records", async () => {
+    await saveHomebrewEntry(
+      "races",
+      { ...RACE, modifiers: [{ target: "speed", op: "add", value: 5, label: "Swift" }] },
+      undefined,
+      source,
+    );
+    await seedFullCharacter(source);
+
+    await importBackup(throughAFile(await collectBackup(undefined, source)), target);
+
+    const [restored] = await target.dnd_characters.toArray();
+    expect(restored.modifiers).toContainEqual(
+      expect.objectContaining({ source: "homebrew:races:azureborn", target: "speed", value: 5 }),
+    );
+  });
+
+  /**
+   * The rename path, which the two tests above do not reach because they
+   * import into an empty database.
+   *
+   * A record whose source still named the OLD index would be stranded
+   * permanently: the character points at `azureborn-2`, `syncEntryModifiers`
+   * scopes by source and so could never re-derive or remove it, and editing or
+   * deleting the entry could not reach it either.
+   */
+  it("repoints modifier sources when an imported entry is renamed around a collision", async () => {
+    const withRecords = { ...RACE, modifiers: [{ target: "speed", op: "add", value: 5, label: "Swift" }] };
+    await saveHomebrewEntry("races", withRecords, undefined, source);
+    await seedFullCharacter(source);
+
+    // The collision: the target already holds an `azureborn`, so the import
+    // renames the incoming one to `azureborn-2`.
+    await saveHomebrewEntry("races", withRecords, undefined, target);
+    await importBackup(throughAFile(await collectBackup(undefined, source)), target);
+
+    const imported = (await target.dnd_characters.toArray()).find((one) => one.raceRef === "homebrew:azureborn-2");
+    expect(imported?.modifiers.map((one) => one.source)).toContain("homebrew:races:azureborn-2");
+  });
+
+  it("leaves no record naming the index the entry was renamed away from", async () => {
+    const withRecords = { ...RACE, modifiers: [{ target: "speed", op: "add", value: 5, label: "Swift" }] };
+    await saveHomebrewEntry("races", withRecords, undefined, source);
+    await seedFullCharacter(source);
+
+    await saveHomebrewEntry("races", withRecords, undefined, target);
+    await importBackup(throughAFile(await collectBackup(undefined, source)), target);
+
+    const imported = (await target.dnd_characters.toArray()).find((one) => one.raceRef === "homebrew:azureborn-2");
+    expect(imported?.modifiers.map((one) => one.source)).not.toContain("homebrew:races:azureborn");
+  });
+
+  /** The id is derived from the source, so it has to move with it. */
+  it("moves the record's id with its source, so the merge does not see a stranger", async () => {
+    const withRecords = { ...RACE, modifiers: [{ target: "speed", op: "add", value: 5, label: "Swift" }] };
+    await saveHomebrewEntry("races", withRecords, undefined, source);
+    await seedFullCharacter(source);
+
+    await saveHomebrewEntry("races", withRecords, undefined, target);
+    await importBackup(throughAFile(await collectBackup(undefined, source)), target);
+
+    const imported = (await target.dnd_characters.toArray()).find((one) => one.raceRef === "homebrew:azureborn-2");
+    const record = imported?.modifiers.find((one) => one.source === "homebrew:races:azureborn-2");
+    expect(record?.id).toBe("homebrew:races:azureborn-2:speed");
+  });
+
   it("survives a second round-trip, so a backup of a restore is still a backup", async () => {
     await saveHomebrewEntry("races", RACE, undefined, source);
     await seedFullCharacter(source);

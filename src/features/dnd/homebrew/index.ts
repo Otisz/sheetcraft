@@ -4,6 +4,16 @@
  * editing components is free to move.
  */
 
+export type { EntryModifier } from "@/features/dnd/homebrew/entry-modifiers";
+export {
+  entryModifierSource,
+  entryModifiers,
+  entryModifiersOf,
+  syncAllEntryModifiers,
+  syncEntryModifiers,
+  validateEntryModifier,
+  validateEntryModifiers,
+} from "@/features/dnd/homebrew/entry-modifiers";
 export { HomebrewEditor } from "@/features/dnd/homebrew/homebrew-editor";
 export { HomebrewList } from "@/features/dnd/homebrew/homebrew-list";
 export type { ReferencingCharacter } from "@/features/dnd/homebrew/references";
@@ -26,4 +36,4 @@ export {
   isHomebrewType,
 } from "@/features/dnd/homebrew/types";
 export type { ValidationIssue, ValidationResult } from "@/features/dnd/homebrew/validate";
-export { parseHomebrewJson, validateEntry } from "@/features/dnd/homebrew/validate";
+export { parseHomebrewJson, stripSideCar, validateEntry } from "@/features/dnd/homebrew/validate";

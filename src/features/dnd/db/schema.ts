@@ -137,7 +137,24 @@ export type CatalogEntry = {
   [key: string]: unknown;
 };
 
-/** A homebrew entry — same schema as its catalog counterpart, plus edit bookkeeping. */
+/**
+ * A homebrew entry — same schema as its catalog counterpart, plus the two
+ * things stored BESIDE that schema rather than inside it.
+ *
+ * Both keys are side-cars, and that is the point: the vendored catalog schemas
+ * are `z.strictObject`, so anything stored inside the payload has to be a field
+ * the SRD itself declares. `updatedAt` is edit bookkeeping; `modifiers` is what
+ * the entry does to a character that takes it. Neither is catalog data, so
+ * neither goes through `validateEntry` — see ADR-0006, and
+ * `stripSideCar` in `validate.ts`, which is the one place the split is made.
+ */
 export type HomebrewEntry = CatalogEntry & {
   updatedAt: Date;
+  /**
+   * Author-supplied modifier records. Absent on most entries, and always
+   * absent on a catalog row — which is what keeps the two interchangeable
+   * everywhere downstream. Typed as `EntryModifier[]` at its own seam;
+   * `unknown[]` here so `schema.ts` stays free of feature imports.
+   */
+  modifiers?: unknown[];
 };

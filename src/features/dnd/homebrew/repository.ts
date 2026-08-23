@@ -1,6 +1,7 @@
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
-import type { CatalogEntry, HomebrewEntry } from "@/features/dnd/db/schema";
+import type { CatalogEntry, CharacterRecord, HomebrewEntry } from "@/features/dnd/db/schema";
+import { resyncCharacter } from "@/features/dnd/homebrew/entry-modifiers";
 import type { ReferencingCharacter } from "@/features/dnd/homebrew/references";
 import { charactersReferencing } from "@/features/dnd/homebrew/references";
 import { uniqueSlug } from "@/features/dnd/homebrew/slug";
@@ -81,6 +82,9 @@ export async function saveHomebrewEntry(
     return validated;
   }
 
+  // `validated.entry` already carries the side-car — `validateEntry` puts it
+  // back after parsing the payload — so the modifier records travel through
+  // here with no special handling. `updatedAt` is restamped on every write.
   const entry: HomebrewEntry = { ...(validated.entry as CatalogEntry), index, updatedAt: new Date() };
 
   // The scan runs before the write and reports on the ENTRY, not on the change:
@@ -91,7 +95,62 @@ export async function saveHomebrewEntry(
 
   await db.table(tableFor(type)).put(entry);
 
+  // The entry's own modifier records, pushed onto the characters already
+  // holding them.
+  //
+  // This is what makes an entry-authored modifier agree with the live-edit
+  // behaviour CONTEXT.md § Catalog reference promises. Everything else about
+  // an entry is read THROUGH the ref at derive time, so an edit propagates for
+  // free; a modifier is different, because `enabled` is stored player state and
+  // a list rebuilt on every read has nowhere to keep it (the same reason
+  // ADR-0004 attaches feature records at creation). Stored records therefore
+  // have to be brought forward deliberately, and here is the one place that
+  // knows an entry just changed.
+  //
+  // Ungated: on a CREATE the scan above is empty, so this early-returns. A
+  // guard here would be dead weight that also reads as create being a case
+  // with different rules.
+  await propagateEntryModifiers(type, entry, affected, db);
+
   return { ok: true, entry, affected };
+}
+
+/**
+ * Re-syncs one entry's records onto the characters that reference it.
+ *
+ * **Only the characters the scan already named**, rather than a second full
+ * table walk: the scan is the authority on who holds this entry, and asking
+ * twice invites the two answers to differ.
+ *
+ * A character whose records did not move is **not written**. `resyncCharacter`
+ * returns `null` for it, and skipping the write is what stops an edit to an
+ * entry's prose from restamping `updatedAt` on every character holding it —
+ * which would reorder the character list for a change none of them can see.
+ *
+ * The player's `enabled` flag survives, because `syncEntryModifiers` merges
+ * rather than replaces.
+ */
+async function propagateEntryModifiers(
+  type: HomebrewType,
+  entry: HomebrewEntry,
+  affected: ReferencingCharacter[],
+  db: SheetcraftDb,
+): Promise<void> {
+  if (affected.length === 0) {
+    return;
+  }
+
+  const characters = await db.dnd_characters.bulkGet(affected.map((one) => one.id));
+
+  const updated = characters
+    .filter((character): character is CharacterRecord => character !== undefined)
+    .map((character) => resyncCharacter(character, type, entry))
+    .filter((character): character is CharacterRecord => character !== null)
+    .map((character) => ({ ...character, updatedAt: new Date() }));
+
+  if (updated.length > 0) {
+    await db.dnd_characters.bulkPut(updated);
+  }
 }
 
 export async function getHomebrewEntry(

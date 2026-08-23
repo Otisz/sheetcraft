@@ -1,6 +1,7 @@
 import { refIndex } from "@/features/dnd/db/resolve-ref";
 import type { Abil, Ref } from "@/features/dnd/db/schema";
 import { ABILITIES } from "@/features/dnd/db/schema";
+import type { EntryModifier } from "@/features/dnd/homebrew/entry-modifiers";
 import type { HomebrewType } from "@/features/dnd/homebrew/types";
 
 /**
@@ -15,6 +16,29 @@ import type { HomebrewType } from "@/features/dnd/homebrew/types";
  * holds each type to the contract by running the built candidate through the
  * real schema.
  */
+
+/**
+ * One authored modifier record as the FORM holds it — every field a string,
+ * like the rest of the draft, because that is what an input produces.
+ *
+ * `value` is one string covering both shapes a record's value may take: a
+ * number, or a `{ref}`. They are one field rather than two-plus-a-mode because
+ * an author typing `2` and an author typing `mod.con` are doing the same
+ * thing — saying how big the bonus is — and a mode switch would make them
+ * answer a question about representation first. `modifierValue` below decides
+ * which one they wrote.
+ */
+export type ModifierDraft = {
+  target: string;
+  op: string;
+  value: string;
+  label: string;
+};
+
+/** A blank modifier row. `add` because almost every authored record is one. */
+export function emptyModifierDraft(): ModifierDraft {
+  return { target: "", op: "add", value: "", label: "" };
+}
 
 /**
  * One draft shape for every form type rather than a union. The forms render
@@ -70,6 +94,14 @@ export type FormDraft = {
    * than a ref anything resolves.
    */
   classNames: string[];
+
+  /**
+   * Author-supplied modifier records. On the draft for every type rather than
+   * only for subclasses: the side-car is type-agnostic (ADR-0006), and a field
+   * present for one type would have to be threaded specially the moment a
+   * second form grew the UI. Only the subclass form renders it today.
+   */
+  modifiers: ModifierDraft[];
 };
 
 /**
@@ -111,6 +143,7 @@ export function emptyFormDraft(): FormDraft {
     ritual: false,
     concentration: false,
     classNames: [],
+    modifiers: [],
   };
 }
 
@@ -182,6 +215,57 @@ function abilityBonuses(draft: FormDraft) {
       },
     ];
   });
+}
+
+/**
+ * A typed value as the record stores it: a number, or a `{ref}`.
+ *
+ * The author writes one field and this decides which they meant. A string that
+ * parses as a number is a number; anything else is offered as a reference,
+ * INCLUDING text that is neither — `validateEntryModifier` is what rejects it,
+ * and guessing "0" for an unrecognised word would silently author a record
+ * that does nothing.
+ *
+ * Bare rather than `{ref: ...}`-wrapped in the form, because `mod.con` is what
+ * the vocabulary calls itself; making the author type the JSON around it would
+ * be asking them to write the storage format.
+ */
+function modifierValue(text: string): number | { ref: string } {
+  const trimmed = text.trim();
+  const parsed = Number(trimmed);
+  return trimmed !== "" && Number.isFinite(parsed) ? parsed : { ref: trimmed };
+}
+
+/**
+ * The modifier rows as the side-car stores them.
+ *
+ * A row is kept when the author has typed **anything at all** into it, rather
+ * than only when it is complete. A half-filled row that vanished on save would
+ * be the form silently discarding work; kept, it comes back as a validation
+ * issue pointing at the field that is missing, which is the same contract every
+ * other field on this form has.
+ *
+ * `undefined` rather than `[]` when nothing was authored, so an entry with no
+ * records has no `modifiers` key at all — identical on disk to the catalog rows
+ * it sits beside.
+ */
+function modifierRecords(draft: FormDraft): EntryModifier[] | undefined {
+  const rows = draft.modifiers.filter((row) => !isBlankModifier(row));
+  if (rows.length === 0) {
+    return undefined;
+  }
+
+  return rows.map((row) => ({
+    target: row.target.trim(),
+    op: row.op.trim() as EntryModifier["op"],
+    value: modifierValue(row.value),
+    label: row.label.trim(),
+  }));
+}
+
+/** Whether the author has touched a row at all. `op` has a default, so it does not count. */
+function isBlankModifier(row: ModifierDraft): boolean {
+  return row.target.trim() === "" && row.value.trim() === "" && row.label.trim() === "";
 }
 
 /** The stored entry, minus the `index` the repository assigns. */
@@ -259,6 +343,9 @@ export function buildCandidate(type: HomebrewType, draft: FormDraft): Candidate 
         desc: lines(draft.desc),
         subclass_levels: `/api/subclasses/${slugPart(name)}/levels`,
         url: `/api/subclasses/${slugPart(name)}`,
+        // The side-car, beside the vendored payload rather than inside it —
+        // `validateEntry` splits it back off before parsing. See ADR-0006.
+        ...optional("modifiers", modifierRecords(draft)),
       };
 
     // `classes` and `backgrounds` are JSON-only: 190 and 168 leaves, and a
@@ -299,6 +386,41 @@ function slugPart(name: string): string {
 
 /** A stored entry, as the loose shape a reader has to treat it as. */
 type StoredEntry = Record<string, unknown>;
+
+/**
+ * The stored side-car back as the rows that produced it.
+ *
+ * The inverse of `modifierRecords`, and held to it by the same round-trip test
+ * every other field has: an entry opened and saved untouched must come out
+ * identical. A `{ref}` is unwrapped back to the bare vocabulary word, which is
+ * what the author typed.
+ */
+function modifierDrafts(value: unknown): ModifierDraft[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((one) => {
+    const row = (one ?? {}) as StoredEntry;
+    return {
+      target: str(row.target),
+      op: str(row.op) || "add",
+      value: modifierValueText(row.value),
+      label: str(row.label),
+    };
+  });
+}
+
+/** A stored value as the single field the form shows it in. */
+function modifierValueText(value: unknown): string {
+  if (typeof value === "number") {
+    return String(value);
+  }
+  if (typeof value === "object" && value !== null && "ref" in value) {
+    return str((value as { ref: unknown }).ref);
+  }
+  return "";
+}
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -428,6 +550,7 @@ export function draftFromEntry(
         parentRef: refFromIndex((entry.class as StoredEntry)?.index, parentSource),
         parentName: str((entry.class as StoredEntry)?.name),
         desc: proseOf(entry.desc),
+        modifiers: modifierDrafts(entry.modifiers),
       };
 
     case "classes":

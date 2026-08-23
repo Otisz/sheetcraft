@@ -2,8 +2,9 @@ import type { BackupFile } from "@/features/dnd/backup/format";
 import { newCharacterId } from "@/features/dnd/db/characters-repository";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
+import { modifierId } from "@/features/dnd/db/modifier-id";
 import { refIndex, refSource } from "@/features/dnd/db/resolve-ref";
-import type { CharacterEquipmentEntry, CharacterRecord, HomebrewEntry, Ref } from "@/features/dnd/db/schema";
+import type { CharacterEquipmentEntry, CharacterRecord, HomebrewEntry, Modifier, Ref } from "@/features/dnd/db/schema";
 import type { HomebrewType } from "@/features/dnd/homebrew/types";
 import { HOMEBREW_TYPE_ORDER, tableFor } from "@/features/dnd/homebrew/types";
 import type { ValidationIssue } from "@/features/dnd/homebrew/validate";
@@ -118,7 +119,40 @@ function rewriteCharacterRefs(character: CharacterRecord, renames: Map<string, s
       known: character.spells.known.map((ref) => rewriteRef(ref, renames)),
       prepared: character.spells.prepared.map((ref) => rewriteRef(ref, renames)),
     },
+    modifiers: character.modifiers.map((modifier) => rewriteModifierSource(modifier, renames)),
   };
+}
+
+/**
+ * A record's `source` through the same rename map.
+ *
+ * Separate from `rewriteRef` because it is a **different grammar**:
+ * `homebrew:<type>:<index>`, not `homebrew:<index>`. That difference is
+ * exactly why this needed writing rather than falling out of the field-by-field
+ * style above — the compiler catches a new ref-BEARING field, and a source
+ * string embedding an index is not one.
+ *
+ * Missing it strands the record permanently. The character would point at the
+ * renamed entry while its records still named the old index, so
+ * `syncEntryModifiers` — which scopes by source — could never re-derive or
+ * remove them, and editing or deleting the entry could not reach them either.
+ * A number on the sheet that nothing can explain and nothing can clear.
+ */
+function rewriteModifierSource(modifier: Modifier, renames: Map<string, string>): Modifier {
+  const parts = modifier.source.split(":");
+  if (parts.length !== 3 || parts[0] !== "homebrew") {
+    return modifier;
+  }
+
+  const renamed = renames.get(parts[2]);
+  if (renamed === undefined) {
+    return modifier;
+  }
+
+  const source = `homebrew:${parts[1]}:${renamed}`;
+  // The id is derived from the source, so it moves with it — otherwise the
+  // merge would key on a stale id and treat the record as a stranger.
+  return { ...modifier, source, id: modifierId(source, modifier.target) };
 }
 
 /**
@@ -170,6 +204,13 @@ async function planHomebrew(
       // `updatedAt` is storage bookkeeping, not part of the entry — and the
       // vendored schemas are `z.strictObject`, so leaving it on makes a stored
       // entry fail the very schema it was stored under.
+      //
+      // `modifiers` is the OTHER side-car and is deliberately NOT stripped
+      // here: it is authored content, and `validateEntry` splits it off the
+      // payload itself before parsing (see `stripSideCar`). Dropping it would
+      // import a subclass whose numeric effects had silently vanished — the
+      // one thing a backup must never do quietly. It is still validated: a
+      // malformed record fails the import rather than riding in unchecked.
       const { updatedAt: _writtenAt, ...candidate } = entry;
       const validated = validateEntry(type, { ...candidate, index });
       if (!validated.ok && !onlyUnknownKeys(validated.issues)) {

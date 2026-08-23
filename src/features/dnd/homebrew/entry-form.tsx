@@ -1,8 +1,10 @@
 import { PickerField, useClassOptions, useRaceOptions } from "@/features/dnd/content";
 import { ABILITIES, type Abil } from "@/features/dnd/db/schema";
-import type { FormDraft } from "@/features/dnd/homebrew/drafts";
+import type { FormDraft, ModifierDraft } from "@/features/dnd/homebrew/drafts";
+import { emptyModifierDraft } from "@/features/dnd/homebrew/drafts";
 import { FieldSection, SwitchField, TextAreaField, TextField } from "@/features/dnd/homebrew/fields";
 import type { HomebrewType } from "@/features/dnd/homebrew/types";
+import { cn } from "@/lib/utils";
 
 /**
  * The field-by-field surface, for the four types shallow enough to have one
@@ -307,23 +309,30 @@ function SpellFields({ draft, set }: { draft: FormDraft; set: Setter }) {
 }
 
 /**
- * The **minimal** subclass form: name, parent class, and level features as
- * prose. Not the full schema — worst case 625 leaves — and shipped anyway,
- * because the SRD has exactly one subclass per class and that is close to
- * unusable at a real table. Anything this cannot express is written in the
- * JSON editor, which accepts the same type.
+ * The **minimal** subclass form: name, parent class, level features as prose,
+ * and the modifier records those features contribute. Not the full schema —
+ * worst case 625 leaves — and shipped anyway, because the SRD has exactly one
+ * subclass per class and that is close to unusable at a real table. Anything
+ * this cannot express is written in the JSON editor, which accepts the same
+ * type.
  *
- * NO MODIFIER RECORDS, despite
- * [#165](https://github.com/Otisz/sheetcraft/issues/165) naming them. They
- * have nowhere to go: a modifier lives on the CHARACTER record, and every
- * vendored catalog schema is a `z.strictObject` with no modifier field — so an
- * entry carrying one fails validation, which is the same ticket's "entries
- * conform to the same schema as catalog entries" and "schema-valid is valid".
+ * The modifier records were deferred out of
+ * [#165](https://github.com/Otisz/sheetcraft/issues/165) and landed in
+ * [#174](https://github.com/Otisz/sheetcraft/issues/174). They had nowhere to
+ * go at the time: a modifier lived only on the CHARACTER record, and every
+ * vendored catalog schema is a `z.strictObject` that rejects an entry carrying
+ * one — so the form could not have both them and "entries conform to the same
+ * schema as catalog entries".
  *
- * A subclass's numeric effects are therefore added on the character that takes
- * it, where every other modifier already lives and where the toggle the sheet
- * offers actually applies. Giving homebrew entries a modifier field of their
- * own is a schema change, not a form change — see the ticket thread.
+ * What shipped is a **side-car**: `modifiers` sits on the stored row beside
+ * `updatedAt` and OUTSIDE the vendored payload, so the strict schema is
+ * untouched and `validateEntry` still means what it meant. `stripSideCar` in
+ * `validate.ts` is the seam; `entry-modifiers.ts` is what the records become on
+ * a character. See ADR-0006.
+ *
+ * The rows are authored here for `subclasses` only. Storage and application
+ * are type-agnostic, so the other six types reach the same field through the
+ * JSON editor.
  */
 function SubclassFields({
   draft,
@@ -365,6 +374,149 @@ function SubclassFields({
           hint="One per line, in your own words. The sheet shows them as written — it does not read levels out of them."
         />
       </FieldSection>
+
+      <FieldSection title="What it changes">
+        <ModifierRows rows={draft.modifiers} onChange={(rows) => set("modifiers", rows)} />
+      </FieldSection>
     </>
   );
 }
+
+/**
+ * The modifier rows: what the entry does to a character that takes it.
+ *
+ * **Add-a-row rather than a fixed grid**, which is the opposite of
+ * `AbilityBonusGrid` above and for the opposite reason — there are exactly six
+ * abilities and the list never grows, while a subclass may change nothing at
+ * all or four different values.
+ *
+ * Starts EMPTY, with no blank row waiting. Most subclasses change no number
+ * this app derives — their features are prose, exactly as the SRD's are — and
+ * a row sitting open would read as a field that ought to be filled in.
+ */
+function ModifierRows({ rows, onChange }: { rows: ModifierDraft[]; onChange: (rows: ModifierDraft[]) => void }) {
+  function update(position: number, row: ModifierDraft) {
+    onChange(rows.map((existing, index) => (index === position ? row : existing)));
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Numbers this subclass changes on the sheet. Leave it empty if its features are prose — most are. Each one
+        arrives switched on, and the player can turn it off in Effects.
+      </p>
+
+      {rows.map((row, position) => (
+        <ModifierRow
+          // Position, not content: every field is free-text and two identical
+          // blank rows would collide on any content-derived key, remounting
+          // both on every keystroke.
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows are reordered only by add and remove
+          key={position}
+          row={row}
+          onChange={(next) => update(position, next)}
+          onRemove={() => onChange(rows.filter((_, index) => index !== position))}
+        />
+      ))}
+
+      <button
+        type="button"
+        onClick={() => onChange([...rows, emptyModifierDraft()])}
+        className="h-12 rounded-lg border border-dashed border-border text-sm font-medium text-muted-foreground active:bg-muted"
+      >
+        Add something it changes
+      </button>
+    </div>
+  );
+}
+
+/**
+ * One record. The four fields the side-car stores, in the order they read as a
+ * sentence: this *value* is *op*ed onto this *target*, and it is called *label*.
+ */
+function ModifierRow({
+  row,
+  onChange,
+  onRemove,
+}: {
+  row: ModifierDraft;
+  onChange: (row: ModifierDraft) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+      <TextField
+        label="What it changes"
+        value={row.target}
+        onChange={(value) => onChange({ ...row, target: value })}
+        placeholder="ac"
+        hint="One of: ac, maxHp, speed, initiative, passivePerception, proficiencyBonus, spell.saveDc, spell.attack, or ability.<abil>, save.<abil>, skill.<name>."
+      />
+
+      <OpField value={row.op} onChange={(value) => onChange({ ...row, op: value })} />
+
+      <TextField
+        label="By how much"
+        value={row.value}
+        onChange={(value) => onChange({ ...row, value })}
+        placeholder="1"
+        hint="A number, or something the sheet looks up: level, proficiencyBonus, mod.con, score.str."
+      />
+
+      <TextField
+        label="Called"
+        value={row.label}
+        onChange={(value) => onChange({ ...row, label: value })}
+        placeholder="Storm Ward"
+        hint="What the sheet says when it explains where the number came from."
+      />
+
+      <button type="button" onClick={onRemove} className="h-11 text-sm font-medium text-destructive active:bg-muted">
+        Remove
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The four ops, as buttons rather than a text field.
+ *
+ * A closed set of four is a choice, not a thing to type, and `min`/`max` are
+ * the pair people get backwards — the labels say which bound they are, because
+ * "min" naming a FLOOR is the SRD's reading and not the obvious one.
+ */
+function OpField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">How</span>
+      <div className="flex gap-1 rounded-lg bg-muted p-1">
+        {OP_CHOICES.map((choice) => (
+          <button
+            key={choice.op}
+            type="button"
+            aria-pressed={value === choice.op}
+            onClick={() => onChange(choice.op)}
+            className={cn(
+              "h-10 flex-1 rounded-md text-sm font-medium",
+              value === choice.op ? "bg-background shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The op vocabulary, labelled by what it DOES rather than by its key.
+ * `min` is a floor and `max` is a ceiling — see CONTEXT.md § Modifier record,
+ * where the naming is the SRD's and deliberately not the arithmetic function's.
+ */
+const OP_CHOICES = [
+  { op: "add", label: "Add" },
+  { op: "set", label: "Set to" },
+  { op: "min", label: "At least" },
+  { op: "max", label: "At most" },
+] as const;
