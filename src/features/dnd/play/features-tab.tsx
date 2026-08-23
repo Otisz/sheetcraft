@@ -10,9 +10,11 @@ import type { FeatureEntry } from "@/features/dnd/play/tab-data";
  * nobody reads on a phone — but the text has to be *here* rather than behind a
  * link, because "what does Rage actually do" is a mid-combat question.
  *
- * Features are **prose only**. Anything a feature does to a number arrives as a
- * modifier record and appears on the effects row instead; this tab never
- * implies arithmetic the app did not do.
+ * Features are **prose only**. The few whose effect this engine can express —
+ * Unarmored Defense, Fast Movement — also arrive as modifier records and appear
+ * in the effects drawer, but the prose stays here regardless: most SRD features
+ * change no value the app derives, and this tab is where they remain readable.
+ * It never implies arithmetic the app did not do. See ADR-0004.
  */
 export function FeaturesTab({
   classFeatures,

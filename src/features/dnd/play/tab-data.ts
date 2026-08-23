@@ -13,6 +13,7 @@
  * player's doing.
  */
 
+import { loadClassFeatures } from "@/features/dnd/db/class-features";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
 import { type RefType, refIndex, resolveRef } from "@/features/dnd/db/resolve-ref";
@@ -71,50 +72,22 @@ async function loadNames(
 }
 
 /**
- * The class features this character has unlocked, in level order.
+ * The class features this character has unlocked, as the tab renders them.
  *
- * Scoped three ways, and each exclusion matters:
- *
- * - **By class**, so a rogue's Sneak Attack never appears on a barbarian.
- * - **By level**, so a level 3 character is not shown level 9 prose as though
- *   they had it.
- * - **By subclass**, so a Berserker sees Frenzy and a Totem Warrior does not.
- *   A feature carrying *no* subclass belongs to the base class and is always
- *   included; one carrying a different subclass is dropped.
+ * The scan itself lives in `db/class-features.ts`, shared with the module that
+ * turns the few numeric features into modifier records — one filter, so
+ * "a Berserker sees Frenzy and a Totem Warrior does not" cannot drift between
+ * what the tab shows and what the effects drawer offers.
  */
-async function loadClassFeatures(character: CharacterRecord, db: SheetcraftDb): Promise<FeatureEntry[]> {
-  const classIndex = refIndex(character.classRef);
-  if (!classIndex) {
-    return [];
-  }
+async function loadFeatureEntries(character: CharacterRecord, db: SheetcraftDb): Promise<FeatureEntry[]> {
+  const features = await loadClassFeatures(character, db);
 
-  const subclassIndex = refIndex(character.subclassRef);
-
-  const rows = await db.dnd_catalog_features.filter((entry) => {
-    const owner = (entry.class as { index?: unknown } | undefined)?.index;
-    if (owner !== classIndex) {
-      return false;
-    }
-
-    const level = entry.level;
-    if (typeof level !== "number" || level > character.level) {
-      return false;
-    }
-
-    const subclass = (entry.subclass as { index?: unknown } | undefined)?.index;
-    return subclass === undefined || subclass === subclassIndex;
-  });
-
-  const features = await rows.toArray();
-
-  return features
-    .map((entry) => ({
-      index: entry.index,
-      name: typeof entry.name === "string" ? entry.name : entry.index,
-      description: toDescription(entry.desc),
-      level: entry.level as number,
-    }))
-    .sort((a, b) => a.level - b.level);
+  return features.map((entry) => ({
+    index: entry.index,
+    name: typeof entry.name === "string" ? entry.name : entry.index,
+    description: toDescription(entry.desc),
+    level: entry.level as number,
+  }));
 }
 
 /**
@@ -221,7 +194,7 @@ export async function loadTabData(character: CharacterRecord, db: SheetcraftDb =
       db,
     ),
     loadLanguageNames(character, db),
-    loadClassFeatures(character, db),
+    loadFeatureEntries(character, db),
     loadRaceFeatures(character, db),
   ]);
 

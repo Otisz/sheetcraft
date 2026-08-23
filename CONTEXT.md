@@ -402,7 +402,8 @@ a visible trace step; nothing in the 2014 rules reduces a speed below 0, so the 
 homebrew or override that subtracts too much.
 
 AC's base formula reads armor's `{base, dex_bonus, max_bonus}`; everything a *feature* contributes arrives as a modifier
-record instead, because SRD features are prose-only.
+record instead, because SRD features are prose-only. Who writes those records is
+[Feature modifier map](#feature-modifier-map).
 
 ```
 base = equippedArmor
@@ -431,6 +432,31 @@ already moved the passive score; `passivePerception` records land on top of it.
 
 Spell save DC (`8 + proficiency + ability`) and spell attack bonus (`proficiency + ability`) are
 `null` for a non-caster, not 0 — a number there is one the sheet cannot tell from a real one.
+
+## Feature modifier map
+
+The answer to who turns a prose-only SRD feature into a [modifier record](#modifier-record):
+a **hand-authored map from feature `index` to record templates**, in
+`features/dnd/creation/feature-modifiers.ts`. See [ADR-0004](docs/adr/0004-srd-features-as-modifier-records.md).
+
+Keyed by `index`, **never by `name`** — the barbarian's and the monk's Unarmored Defense share a
+display name and differ in the ability they add (CON vs WIS), so a name key is wrong at the first
+feature anyone reaches for.
+
+**Explicitly partial, and that is the design.** The [closed target vocabulary](#modifier-record) is
+the boundary: a feature that cannot express itself as a `Target` is one this app does not compute,
+and it stays prose on the Features tab rather than having a target invented for it. Rage is the
+clearest absence — advantage on STR checks and resistance to three damage types are none of them a
+value `derive()` produces.
+
+Records attach **at creation** and are re-derived by `syncFeatureModifiers` whenever class,
+subclass or level moves — a **merge, not a replace**. The player's `enabled` flag survives, records
+for lost features go, and every non-`feature:` record is untouched, which is also what lets a
+homebrew record the player authored coexist with nothing special-cased for SRD.
+
+**Seeded disabled.** Unarmored Defense is conditional on wearing no armor and Sheetcraft evaluates
+no conditions — the player does. Seeding it on would state an AC the character may not have; seeding
+it off states nothing and asks. See [Toggle](#toggle).
 
 ## Derive context
 

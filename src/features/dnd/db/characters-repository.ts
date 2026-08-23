@@ -1,3 +1,6 @@
+import type { FeatureSource } from "@/features/dnd/creation/feature-modifiers";
+import { syncFeatureModifiers } from "@/features/dnd/creation/feature-modifiers";
+import { loadClassFeatures } from "@/features/dnd/db/class-features";
 import type { SheetcraftDb } from "@/features/dnd/db/db";
 import { getDb } from "@/features/dnd/db/db";
 import type { Abil, CharacterRecord, Modifier, Ref } from "@/features/dnd/db/schema";
@@ -78,6 +81,22 @@ function emptyCharacterDefaults(now: Date): Omit<CharacterRecord, "id" | "name" 
   };
 }
 
+/**
+ * The character's class features, narrowed to what the modifier map needs.
+ *
+ * Feature rows carry `name` as prose that may be absent on a malformed entry;
+ * the index is the fallback, because a record labelled with its index still
+ * says more than one labelled with nothing.
+ */
+async function featureSources(character: CharacterRecord, db: SheetcraftDb): Promise<FeatureSource[]> {
+  const features = await loadClassFeatures(character, db);
+
+  return features.map((entry) => ({
+    index: entry.index,
+    name: typeof entry.name === "string" ? entry.name : entry.index,
+  }));
+}
+
 export async function createCharacter(
   input: CreateCharacterInput,
   db: SheetcraftDb = getDb(),
@@ -100,6 +119,15 @@ export async function createCharacter(
     hpRolls: input.hpRolls ?? [],
     modifiers: input.modifiers ?? [],
   };
+
+  // The class features this character starts with, as records. Resolved here
+  // rather than in the creation form because it is a catalog read and the form
+  // is synchronous — and because every path that creates a character wants
+  // them, not only the one with a form in front of it. See ADR-0004.
+  //
+  // Seeded disabled by `featureModifiers`, so nothing here changes a number
+  // until the player flips it.
+  record.modifiers = syncFeatureModifiers(record.modifiers, await featureSources(record, db));
 
   // A new character starts at full health. Derived rather than summed here so
   // the CON modifier — including one arriving as a racial record — is counted
