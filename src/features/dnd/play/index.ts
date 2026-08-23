@@ -17,12 +17,29 @@ export {
   clearOverride,
   describeModifier,
   effectGroups,
+  targetLabel,
   toggleCondition,
   toggleEffect,
 } from "@/features/dnd/play/effects";
 export { nameFor, signed, titleCase, unknownRefLabel } from "@/features/dnd/play/format";
 export type { HpCommit, HpPool, HpStatus } from "@/features/dnd/play/hp";
 export { applyDamage, applyHeal, applyHpCommit, applyTempHp, hpStatus } from "@/features/dnd/play/hp";
+export type { OverrideHandler, OverrideTarget } from "@/features/dnd/play/override-editor";
+export { OverrideEditor, OverrideMarker, useOverrideEditor } from "@/features/dnd/play/override-editor";
+export type { OverrideSurface } from "@/features/dnd/play/overrides";
+export {
+  derivedValueFor,
+  HEADER_MARKER_RENDERERS,
+  isOverridable,
+  MARKER_RENDERERS,
+  OVERRIDE_SURFACES,
+  OVERRIDE_TARGETS,
+  overrideFor,
+  overrideSurface,
+  setOverride,
+  targetsForSurface,
+} from "@/features/dnd/play/overrides";
+export { OverridesDrawer, OverridesMenuItem } from "@/features/dnd/play/overrides-drawer";
 export type {
   ProficiencyEntry,
   ProficiencyGroup,

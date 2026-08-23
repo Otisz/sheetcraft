@@ -1,10 +1,14 @@
 import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { SpellSlotLevel } from "@/features/dnd/db/schema";
+import type { Modifier, SpellSlotLevel } from "@/features/dnd/db/schema";
 import type { Derived, SpellSlotPool } from "@/features/dnd/derive";
 import { nameFor, signed } from "@/features/dnd/play/format";
+import type { OverrideHandler } from "@/features/dnd/play/override-editor";
+import { OverrideMarker, overriddenBorder, useOverrideEditor } from "@/features/dnd/play/override-editor";
+import { overrideFor } from "@/features/dnd/play/overrides";
 import type { SpellSection } from "@/features/dnd/play/sections";
 import type { TabData } from "@/features/dnd/play/tab-data";
+import { cn } from "@/lib/utils";
 
 /** Reports one slot level's new expended count. The parent owns the merge. */
 export type SlotChangeHandler = (level: SpellSlotLevel, expended: number) => void;
@@ -22,14 +26,26 @@ export function SpellsTab({
   section,
   derived,
   names,
+  modifiers,
   onSlotsChange,
+  onModifiersChange,
 }: {
   section: SpellSection;
   derived: Derived;
   names: TabData["names"];
+  modifiers: Modifier[];
   onSlotsChange: SlotChangeHandler;
+  onModifiersChange: (modifiers: Modifier[]) => void;
 }) {
-  if (section.empty) {
+  const { editor, openEditor } = useOverrideEditor({ modifiers, onModifiersChange });
+
+  // A non-caster's two spellcasting stats are still overridable targets, and an
+  // override already on one must still show its marker — the empty state used to
+  // replace the whole tab, which would have rendered a hand-set save DC with
+  // nothing saying so. That is the one thing #171 rules out outright.
+  const overridden = overrideFor(modifiers, "spell.saveDc") ?? overrideFor(modifiers, "spell.attack");
+
+  if (section.empty && !overridden) {
     return (
       <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
         {section.emptyMessage}
@@ -37,11 +53,34 @@ export function SpellsTab({
     );
   }
 
+  if (section.empty) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+          {section.emptyMessage}
+        </p>
+        <CastingStats
+          derived={derived}
+          cantripsKnown={section.cantripsKnown}
+          modifiers={modifiers}
+          onOverride={openEditor}
+        />
+        {editor}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <CastingStats derived={derived} cantripsKnown={section.cantripsKnown} />
+      <CastingStats
+        derived={derived}
+        cantripsKnown={section.cantripsKnown}
+        modifiers={modifiers}
+        onOverride={openEditor}
+      />
       <Slots slots={section.slots} onSlotsChange={onSlotsChange} />
       <SpellList section={section} names={names} />
+      {editor}
     </div>
   );
 }
@@ -51,21 +90,94 @@ export function SpellsTab({
  * are `null` for a non-caster, and a `0` there is a number the sheet could not
  * tell from a real one. See CONTEXT.md § Base formula.
  */
-function CastingStats({ derived, cantripsKnown }: { derived: Derived; cantripsKnown: number }) {
+function CastingStats({
+  derived,
+  cantripsKnown,
+  modifiers,
+  onOverride,
+}: {
+  derived: Derived;
+  cantripsKnown: number;
+  modifiers: Modifier[];
+  onOverride: OverrideHandler;
+}) {
   return (
     <section aria-label="Spellcasting" className="grid grid-cols-3 gap-2">
-      <Tile label="Save DC" value={derived.spellSaveDc === null ? "—" : String(derived.spellSaveDc)} />
-      <Tile label="Attack" value={derived.spellAttackBonus === null ? "—" : signed(derived.spellAttackBonus)} />
+      <Tile
+        label="Save DC"
+        value={derived.spellSaveDc === null ? "—" : String(derived.spellSaveDc)}
+        target="spell.saveDc"
+        /*
+          A non-caster derives `null` here, and an override still has to have a
+          number to replace. Zero is the honest starting point for the editor —
+          it is what the sheet is currently claiming the character has, which is
+          nothing.
+        */
+        derivedValue={derived.spellSaveDc ?? 0}
+        override={overrideFor(modifiers, "spell.saveDc")}
+        onOverride={onOverride}
+      />
+      <Tile
+        label="Attack"
+        value={derived.spellAttackBonus === null ? "—" : signed(derived.spellAttackBonus)}
+        target="spell.attack"
+        derivedValue={derived.spellAttackBonus ?? 0}
+        override={overrideFor(modifiers, "spell.attack")}
+        onOverride={onOverride}
+      />
+      {/*
+        Cantrips known is not an overridable target — it is not in the closed
+        vocabulary — so this tile stays a plain one rather than growing a tap
+        that would do nothing.
+      */}
       <Tile label="Cantrips" value={String(cantripsKnown)} />
     </section>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col items-center rounded-xl border bg-card px-1 py-3">
+/**
+ * One spellcasting stat. Tappable exactly when it names an overridable target,
+ * so the tile that cannot be overridden grows no affordance suggesting it can.
+ */
+function Tile({
+  label,
+  value,
+  target,
+  derivedValue,
+  override,
+  onOverride,
+}: {
+  label: string;
+  value: string;
+  target?: string;
+  derivedValue?: number;
+  override?: Modifier;
+  onOverride?: OverrideHandler;
+}) {
+  const body = (
+    <>
       <span className="text-[0.7rem] tracking-wide text-muted-foreground uppercase">{label}</span>
       <span className="text-xl font-bold tabular-nums">{value}</span>
+    </>
+  );
+
+  const className = cn("flex flex-col items-center rounded-xl border bg-card px-1 py-3", overriddenBorder(override));
+
+  if (!target || onOverride === undefined || derivedValue === undefined) {
+    return <div className={className}>{body}</div>;
+  }
+
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        onClick={() => onOverride({ target, derivedValue })}
+        aria-label={`${label} ${value}${override ? ", overridden" : ""}. Override it.`}
+        className="flex flex-col items-center"
+      >
+        {body}
+      </button>
+      {override ? <OverrideMarker className="mt-0.5" onClear={() => onOverride({ target, derivedValue })} /> : null}
     </div>
   );
 }

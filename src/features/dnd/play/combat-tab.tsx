@@ -1,9 +1,18 @@
 import { Minus, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import type { CharacterRecord } from "@/features/dnd/db/schema";
+import type { CharacterRecord, Modifier } from "@/features/dnd/db/schema";
 import type { Attack, Derived, HitDice } from "@/features/dnd/derive";
 import { signed } from "@/features/dnd/play/format";
+import type { OverrideHandler } from "@/features/dnd/play/override-editor";
+import {
+  OverrideCaption,
+  OverrideMarker,
+  overriddenBorder,
+  useOverrideEditor,
+} from "@/features/dnd/play/override-editor";
+import { overrideFor } from "@/features/dnd/play/overrides";
+import { cn } from "@/lib/utils";
 
 /**
  * The Combat tab: hit dice, inspiration and attacks.
@@ -16,11 +25,15 @@ export function CombatTab({
   character,
   derived,
   onPlayChange,
+  onModifiersChange,
 }: {
   character: CharacterRecord;
   derived: Derived;
   onPlayChange: (play: Partial<CharacterRecord["play"]>) => void;
+  onModifiersChange: (modifiers: Modifier[]) => void;
 }) {
+  const { editor, openEditor } = useOverrideEditor({ modifiers: character.modifiers, onModifiersChange });
+
   return (
     <div className="flex flex-col gap-4">
       <HitDiceSection hitDice={derived.hitDice} onSpentChange={(hitDiceSpent) => onPlayChange({ hitDiceSpent })} />
@@ -28,8 +41,14 @@ export function CombatTab({
         inspiration={character.play.inspiration}
         onChange={(inspiration) => onPlayChange({ inspiration })}
       />
-      <AttacksSection attacks={derived.attacks} />
-      <HitPointRolls rolls={character.hpRolls} maxHp={derived.maxHp} />
+      <AttacksSection attacks={derived.attacks} modifiers={character.modifiers} />
+      <HitPointRolls
+        rolls={character.hpRolls}
+        maxHp={derived.maxHp}
+        override={overrideFor(character.modifiers, "maxHp")}
+        onOverride={openEditor}
+      />
+      {editor}
     </div>
   );
 }
@@ -107,7 +126,7 @@ function InspirationSection({
  * roll, and a sheet that showed a total would be claiming an outcome it never
  * computed. See CONTEXT.md — the player is the rules engine at the table.
  */
-function AttacksSection({ attacks }: { attacks: Attack[] }) {
+function AttacksSection({ attacks, modifiers }: { attacks: Attack[]; modifiers: Modifier[] }) {
   return (
     <section aria-label="Attacks" className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Attacks</h2>
@@ -119,7 +138,13 @@ function AttacksSection({ attacks }: { attacks: Attack[] }) {
       ) : (
         <ul className="flex flex-col gap-1.5">
           {attacks.map((attack) => (
-            <li key={attack.index} className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2">
+            <li
+              key={attack.index}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border bg-card px-3 py-2",
+                overriddenBorder(attackOverride(modifiers, attack.index)),
+              )}
+            >
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium">{attack.name}</span>
                 <span className="text-[0.7rem] text-muted-foreground uppercase">{attack.ability}</span>
@@ -127,12 +152,37 @@ function AttacksSection({ attacks }: { attacks: Attack[] }) {
               <div className="shrink-0 text-right">
                 <div className="text-base font-semibold tabular-nums">{signed(attack.toHit)}</div>
                 <div className="text-xs text-muted-foreground tabular-nums">{damageLine(attack)}</div>
+                {attackOverride(modifiers, attack.index) ? <OverrideCaption /> : null}
               </div>
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * Whether either of one weapon's two targets carries an override.
+ *
+ * **Read-only, and deliberately so.** `attack.*` is not one of the 38 creation
+ * targets — its keys come from the character's own equipment, so no surface can
+ * enumerate them, and `setOverride` refuses to write one. But `derive()` still
+ * *accepts* such a record, and `backup/parse.ts` validates characters with
+ * `z.looseObject`, so a hand-edited or third-party backup can carry one into
+ * the database. Marking it is what stops that number rendering silently.
+ *
+ * There is no clear control here because there is no creation control either:
+ * offering only half the pair on a family the app cannot enumerate is worse
+ * than a marker that says "this came from somewhere else". Whether `attack.*`
+ * gains a real creation surface is left to whichever ticket needs it — see
+ * ADR-0005.
+ */
+function attackOverride(modifiers: Modifier[], index: string): boolean {
+  return modifiers.some(
+    (modifier) =>
+      modifier.source === "override" &&
+      (modifier.target === `attack.${index}.hit` || modifier.target === `attack.${index}.damage`),
   );
 }
 
@@ -144,10 +194,30 @@ function AttacksSection({ attacks }: { attacks: Attack[] }) {
  * them has no way to check the one number that decides whether they are
  * unconscious. See CONTEXT.md § Hit point rolls.
  */
-function HitPointRolls({ rolls, maxHp }: { rolls: number[]; maxHp: number }) {
+function HitPointRolls({
+  rolls,
+  maxHp,
+  override,
+  onOverride,
+}: {
+  rolls: number[];
+  maxHp: number;
+  override: Modifier | undefined;
+  onOverride: OverrideHandler;
+}) {
   return (
     <section aria-label="Hit point rolls" className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Hit point rolls</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Hit point rolls</h2>
+        {/*
+          Max HP is overridden HERE rather than on the header HP row. The row is
+          play state — a numpad that spends and restores hit points — and a tap
+          that redefines the maximum in the middle of that is a different verb
+          wearing the same clothes. Here it sits beside the rolls it is the sum
+          of, which is where the question "why is my max 38?" is asked. See ADR-0005.
+        */}
+        {override ? <OverrideMarker onClear={() => onOverride({ target: "maxHp", derivedValue: maxHp })} /> : null}
+      </div>
 
       {rolls.length === 0 ? (
         <p className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
@@ -170,6 +240,19 @@ function HitPointRolls({ rolls, maxHp }: { rolls: number[]; maxHp: number }) {
           </p>
         </div>
       )}
+
+      {/*
+        Outside the empty-state branch on purpose: a character with no recorded
+        rolls still has a max HP, and it is exactly the character most likely to
+        need it hand-set. Inside the branch this control would vanish for them.
+      */}
+      <button
+        type="button"
+        onClick={() => onOverride({ target: "maxHp", derivedValue: maxHp })}
+        className="self-start text-xs text-muted-foreground underline underline-offset-2"
+      >
+        {override ? `Change the override — worked out as ${maxHp}` : "Override max HP"}
+      </button>
     </section>
   );
 }

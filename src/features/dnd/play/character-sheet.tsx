@@ -21,6 +21,8 @@ import { EffectsRow } from "@/features/dnd/play/effects-row";
 import { signed } from "@/features/dnd/play/format";
 import type { HpPool } from "@/features/dnd/play/hp";
 import { HpSection } from "@/features/dnd/play/hp-row";
+import { overrideFor } from "@/features/dnd/play/overrides";
+import { OverridesMenuItem } from "@/features/dnd/play/overrides-drawer";
 import { useDeriveContext, useTabData, useUpdateModifiers, useUpdatePlay } from "@/features/dnd/play/queries";
 import { describeCharacter } from "@/features/dnd/play/sections";
 import { SheetTabs } from "@/features/dnd/play/sheet-tabs";
@@ -90,7 +92,12 @@ function SheetBody({
     // `pb-` leaves room under the last section; nothing here is laid out wider
     // than the viewport, so the page never scrolls horizontally.
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-4 pb-12">
-      <Identity character={character} names={names} />
+      <Identity
+        character={character}
+        derived={derived}
+        names={names}
+        onModifiersChange={(modifiers) => onModifiersChange({ id: character.id, modifiers })}
+      />
 
       <HpSection
         pool={{ currentHp: character.play.currentHp, tempHp: character.play.tempHp }}
@@ -114,7 +121,13 @@ function SheetBody({
         }
       />
 
-      <Abilities derived={derived} />
+      <Abilities
+        derived={derived}
+        modifiers={character.modifiers}
+        onClearOverride={(target) =>
+          onModifiersChange({ id: character.id, modifiers: clearOverride(character.modifiers, target) })
+        }
+      />
 
       <EffectsRow
         character={character}
@@ -127,13 +140,29 @@ function SheetBody({
         of the record lives. HP and the effects row are never a tap away — that
         is the split #164 was designed around.
       */}
-      <SheetTabs character={character} derived={derived} names={names} onPlayChange={writePlay} />
+      <SheetTabs
+        character={character}
+        derived={derived}
+        names={names}
+        onPlayChange={writePlay}
+        onModifiersChange={(modifiers) => onModifiersChange({ id: character.id, modifiers })}
+      />
     </div>
   );
 }
 
 /** Identity, and the `⋯` menu that is the only door to editing this character. */
-function Identity({ character, names }: { character: CharacterRecord; names: Partial<Record<string, string>> }) {
+function Identity({
+  character,
+  derived,
+  names,
+  onModifiersChange,
+}: {
+  character: CharacterRecord;
+  derived: Derived;
+  names: Partial<Record<string, string>>;
+  onModifiersChange: (modifiers: Modifier[]) => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -162,7 +191,13 @@ function Identity({ character, names }: { character: CharacterRecord; names: Par
         <MoreVertical />
       </Button>
 
-      <CharacterMenu character={character} open={menuOpen} onOpenChange={setMenuOpen} />
+      <CharacterMenu
+        character={character}
+        derived={derived}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        onModifiersChange={onModifiersChange}
+      />
     </header>
   );
 }
@@ -175,12 +210,16 @@ function Identity({ character, names }: { character: CharacterRecord; names: Par
  */
 function CharacterMenu({
   character,
+  derived,
   open,
   onOpenChange,
+  onModifiersChange,
 }: {
   character: CharacterRecord;
+  derived: Derived;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onModifiersChange: (modifiers: Modifier[]) => void;
 }) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
@@ -202,6 +241,12 @@ function CharacterMenu({
             characterName={character.name}
             variant="outline"
           />
+          {/*
+            The ten values that render only on the play header — AC, initiative,
+            speed, proficiency bonus and the six abilities. Everything else is
+            overridden where it is shown. See ADR-0005.
+          */}
+          <OverridesMenuItem derived={derived} modifiers={character.modifiers} onModifiersChange={onModifiersChange} />
           {/*
             Disabled rather than absent: the menu is the answer to "where do I
             edit this?", and an empty drawer answers nothing. Each lands with
@@ -299,16 +344,51 @@ function StatTile({
  * long-press: plain text, so there is no affordance to mis-tap. Editing them is
  * behind the `⋯` menu, which is the whole point of the separation.
  */
-function Abilities({ derived }: { derived: Derived }) {
+function Abilities({
+  derived,
+  modifiers,
+  onClearOverride,
+}: {
+  derived: Derived;
+  modifiers: Modifier[];
+  onClearOverride: (target: string) => void;
+}) {
   return (
     <section aria-label="Ability scores" className="grid grid-cols-6 gap-1.5">
-      {ABILITIES.map((abil) => (
-        <div key={abil} className="flex flex-col items-center rounded-xl border border-border bg-card px-0.5 py-2.5">
-          <span className="text-[0.65rem] tracking-wide text-muted-foreground uppercase">{abil}</span>
-          <span className="text-lg font-bold tabular-nums">{signed(derived.abilityModifiers[abil])}</span>
-          <span className="text-[0.7rem] text-muted-foreground tabular-nums">{derived.abilityScores[abil]}</span>
-        </div>
-      ))}
+      {ABILITIES.map((abil) => {
+        const override = overrideFor(modifiers, `ability.${abil}`);
+
+        return (
+          <div
+            key={abil}
+            className={cn(
+              "flex flex-col items-center rounded-xl border bg-card px-0.5 py-2.5",
+              override ? "border-amber-500" : "border-border",
+            )}
+          >
+            <span className="text-[0.65rem] tracking-wide text-muted-foreground uppercase">{abil}</span>
+            <span className="text-lg font-bold tabular-nums">{signed(derived.abilityModifiers[abil])}</span>
+            <span className="text-[0.7rem] text-muted-foreground tabular-nums">{derived.abilityScores[abil]}</span>
+            {/*
+              Marked, but still not tappable: these six became settable in #171
+              (through the ⋯ menu), so they became markable in it too. Clearing
+              is offered because it is a one-tap undo of a visible claim; the
+              amber border alone would say "hand-set" and offer no way back.
+            */}
+            {override ? (
+              <button
+                type="button"
+                onClick={() => onClearOverride(`ability.${abil}`)}
+                aria-label={`${abil.toUpperCase()} is overridden. Clear it.`}
+                className="mt-0.5 inline-flex items-center text-[0.6rem] text-amber-600 dark:text-amber-400"
+              >
+                set
+                <X className="size-2.5" />
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
     </section>
   );
 }

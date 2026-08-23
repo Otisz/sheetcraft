@@ -483,3 +483,10 @@ The `op: 'set'` half is **enforced**, not merely conventional: an override carry
 a validation error, because resolution would treat it as a `set` regardless and honouring something
 the record does not say is how a sheet starts lying. Several overrides on one target resolve
 last-wins — a second override is the player changing their mind.
+
+**Created on two surfaces, marked on every one.** The 28 targets a tab already renders are
+overridden by tapping the value there; the 10 that render only on the play header — `ac`,
+`initiative`, `speed`, `proficiencyBonus` and the six `ability.*` — are overridden from `⋯` →
+Overrides, because the play surface is deliberately untappable. Wherever a value can be set it also
+carries the marker, which is checked rather than assumed: an override the player can create but
+cannot see leaves the sheet showing a hand-set number with nothing saying so. See ADR-0005.

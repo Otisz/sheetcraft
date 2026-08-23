@@ -147,7 +147,7 @@ export function clearOverride(modifiers: Modifier[], target: string): Modifier[]
  * Falls back to the raw target rather than to a blank: an unfamiliar path is
  * still information, and a nameless effect row is not.
  */
-function targetLabel(target: string): string {
+export function targetLabel(target: string): string {
   const named: Record<string, string> = {
     ac: "AC",
     maxHp: "Max HP",

@@ -1,5 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { CharacterRecord } from "@/features/dnd/db/schema";
+import type { CharacterRecord, Modifier } from "@/features/dnd/db/schema";
 import type { Derived } from "@/features/dnd/derive";
 import { BioTab } from "@/features/dnd/play/bio-tab";
 import { CombatTab } from "@/features/dnd/play/combat-tab";
@@ -29,12 +29,15 @@ export function SheetTabs({
   derived,
   names,
   onPlayChange,
+  onModifiersChange,
 }: {
   character: CharacterRecord;
   derived: Derived;
   /** Resolved display names, queried by the sheet and shared with the header. */
   names: Partial<Record<string, string>>;
   onPlayChange: (play: Partial<CharacterRecord["play"]>) => void;
+  /** Writes the modifier list — how the tabs create and clear overrides. See ADR-0005. */
+  onModifiersChange: (modifiers: Modifier[]) => void;
 }) {
   // The feature prose arrives after first paint on purpose — see `tab-data.ts`.
   // Until it does, refs render through the same `⚠ unknown` path a dangling ref
@@ -67,11 +70,16 @@ export function SheetTabs({
       </div>
 
       <TabsContent value="skills">
-        <SkillsTab character={character} derived={derived} />
+        <SkillsTab character={character} derived={derived} onModifiersChange={onModifiersChange} />
       </TabsContent>
 
       <TabsContent value="combat">
-        <CombatTab character={character} derived={derived} onPlayChange={onPlayChange} />
+        <CombatTab
+          character={character}
+          derived={derived}
+          onPlayChange={onPlayChange}
+          onModifiersChange={onModifiersChange}
+        />
       </TabsContent>
 
       <TabsContent value="spells">
@@ -79,6 +87,8 @@ export function SheetTabs({
           section={section}
           derived={derived}
           names={names}
+          modifiers={character.modifiers}
+          onModifiersChange={onModifiersChange}
           onSlotsChange={(level, expended) =>
             onPlayChange({ slotsExpended: { ...character.play.slotsExpended, [level]: expended } })
           }
