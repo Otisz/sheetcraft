@@ -23,7 +23,7 @@ export {
   MIN_LEVEL,
 } from "@/features/dnd/creation/draft";
 export type { FeatureSource } from "@/features/dnd/creation/feature-modifiers";
-export { featureModifiers, hasFeatureModifiers, syncFeatureModifiers } from "@/features/dnd/creation/feature-modifiers";
+export { featureModifiers, syncFeatureModifiers } from "@/features/dnd/creation/feature-modifiers";
 export type { FloatingChoice, RacialSource } from "@/features/dnd/creation/racial-bonuses";
 export { floatingBonusChoices, racialModifiers } from "@/features/dnd/creation/racial-bonuses";
 export { subclassLevel, subclassRequired } from "@/features/dnd/creation/subclass-timing";

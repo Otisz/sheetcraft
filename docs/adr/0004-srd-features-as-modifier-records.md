@@ -55,14 +55,21 @@ Three things follow from choosing the `index` as the key:
 
 ## Where the records attach
 
-**At creation, and re-derived from class/subclass/level whenever those change.** The alternative —
-resolving on read — was rejected because a record resolved on read is not a record: `enabled` is
-stored state, and a list rebuilt on every read has nowhere to keep the player's toggle.
+**At creation.** The alternative — resolving on read — was rejected because a record resolved on
+read is not a record: `enabled` is stored state, and a list rebuilt on every read has nowhere to
+keep the player's toggle.
+
+Class, subclass and level are **not editable after creation today** — nothing in the app writes
+them, so `createCharacter` is `syncFeatureModifiers`'s only caller. The merge below is nonetheless
+written as a merge rather than as a seed, because the edit surface is the thing that will need it
+and a seeding function would have to be rewritten into one. Wiring it up belongs to whichever
+ticket lands that surface; until then this paragraph describes a capability, not a behaviour the
+app exhibits.
 
 Re-derivation is therefore a **merge, not a replace**: `syncFeatureModifiers` keeps the `enabled`
 flag of any feature record already on the character, drops records whose feature the character no
-longer has, and leaves every non-`feature:` record untouched. A barbarian who levels to 3 does not
-find Unarmored Defense switched back on.
+longer has, and leaves every non-`feature:` record untouched. A barbarian who levels to 3 must not
+find Unarmored Defense switched back off, and the merge is what will guarantee that.
 
 Because the ids are derived from the source and target (`feature:<index>:<target>`, the same shape
 `racialModifiers` uses), the merge is a set operation on stable keys rather than a diff.
@@ -90,3 +97,21 @@ on STR checks, bonus melee damage, and resistance to three damage types — none
 
 Unarmored Defense in particular is an `op: "add"` of `{ref:'mod.con'}` (or `mod.wis`) on `ac`, **not**
 a replacement base formula: the base already yields `10 + dexMod` when no armor is equipped.
+
+### How situational is too situational
+
+The map's entries are not equally comfortable, and the boundary is worth stating rather than leaving
+to taste. Unarmored Defense and Fighting Style: Defense hold for a whole combat, so a switch the
+player flips once per fight matches how the rule is actually used at a table.
+
+**Defensive Tactics: Multiattack Defense is the loosest fit in the map** — it is +4 against one
+attacker for the rest of a turn, so its natural lifetime is shorter than the switch's. It is
+included because the player is the condition evaluator (CONTEXT.md § Toggle) and a hunter tracking
+"that ogre is hitting me again this turn" is doing arithmetic they would otherwise do in their head.
+The alternative — leaving it prose — would be defensible; what would not be defensible is inventing
+a per-attacker vocabulary to hold it, which is the rules engine this app declines to become.
+
+What is genuinely out of reach is anything whose scaling lives outside the feature row. The monk's
+Unarmored Movement is the example: the SRD ships feature rows at levels 2 and 9, but the speed steps
+at 2/6/10/14/18 in the `Levels` table. Only the 2nd-level +10 is a record here; reading the rest
+means reading that table, which is a base-formula change rather than a modifier record.

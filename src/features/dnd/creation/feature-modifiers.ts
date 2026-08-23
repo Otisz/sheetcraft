@@ -1,3 +1,4 @@
+import { modifierId } from "@/features/dnd/db/modifier-id";
 import type { Modifier } from "@/features/dnd/db/schema";
 import type { Target } from "@/features/dnd/derive";
 
@@ -59,15 +60,25 @@ const FEATURE_EFFECTS: Record<string, readonly FeatureEffect[]> = {
 
   /** "your speed increases by 10 feet while you aren't wearing heavy armor" */
   "fast-movement": [{ target: "speed", op: "add", value: 10 }],
-  /** Unarmored Movement at 2nd level: +10 feet. */
-  "unarmored-movement-1": [{ target: "speed", op: "add", value: 10 }],
   /**
-   * Unarmored Movement at 9th level. The monk table reads 15 feet there, and
-   * the level-2 record is still on the character — so this is the **+5
-   * increment**, not the new total. Two `add`s that sum to the table's value is
-   * how the trace reads on the sheet.
+   * "your speed increases by 10 feet while you are not wearing armor or
+   * wielding a shield" — the 2nd-level row, and the only Unarmored Movement
+   * record this map writes.
+   *
+   * **`unarmored-movement-2` is deliberately absent**, though the SRD ships it
+   * as a feature row. It is the 9th-level entry, and what it grants is the
+   * ability to move along vertical surfaces and across liquids — not a speed
+   * bonus. The monk's speed scaling lives in the `Levels` table
+   * (`class_specific.unarmored_movement`: 10 at 2, 15 at **6**, 20 at 10, 25 at
+   * 14, 30 at 18) and the SRD ships no feature row for any step after the
+   * first. Reading a record off the 9th-level row would put +5 on the sheet
+   * three levels after the rules grant it and leave a level-6 monk 5 feet
+   * short — a number this map would have invented.
+   *
+   * Deriving the rest means reading the `Levels` table, which is a base-formula
+   * change rather than a modifier record, and out of scope here.
    */
-  "unarmored-movement-2": [{ target: "speed", op: "add", value: 5 }],
+  "unarmored-movement-1": [{ target: "speed", op: "add", value: 10 }],
 
   /**
    * "While you are wearing armor, you gain a +1 bonus to AC." One entry per
@@ -93,12 +104,33 @@ const FEATURE_EFFECTS: Record<string, readonly FeatureEffect[]> = {
   ],
 };
 
+/**
+ * The `feature:` provenance namespace — the one place this module spells it.
+ *
+ * `effects.ts` names the same prefix in its positive list of toggleable
+ * sources, and that repetition is deliberate: the list there is a statement
+ * about which namespaces get a switch, not a derivation from this one.
+ */
+const FEATURE_NAMESPACE = "feature:";
+
 /** The `feature:` namespace of one feature's records. */
 function featureSource(index: string): string {
-  return `feature:${index}`;
+  return `${FEATURE_NAMESPACE}${index}`;
 }
 
-/** Whether the map has anything to say about this feature. */
+/** Whether a record was written by this module, and is therefore ours to re-derive. */
+function isFeatureRecord(modifier: Modifier): boolean {
+  return modifier.source.startsWith(FEATURE_NAMESPACE);
+}
+
+/**
+ * Whether the map has anything to say about this feature.
+ *
+ * Not on the feature's public surface — nothing in the app asks this question,
+ * because `featureModifiers` already answers it by returning nothing. It exists
+ * for the coverage test, which checks every key against the vendored catalog
+ * without the map itself having to be exported.
+ */
 export function hasFeatureModifiers(index: string): boolean {
   return Object.hasOwn(FEATURE_EFFECTS, index);
 }
@@ -106,10 +138,8 @@ export function hasFeatureModifiers(index: string): boolean {
 /**
  * The records a set of features contributes.
  *
- * Ids are derived from source and target rather than randomly generated, for
- * the reason `racialModifiers` does the same: the same feature must produce the
- * same record every time, or a re-derivation looks like a change and the merge
- * below has no stable key to match on.
+ * Ids come from `modifierId`, the same rule the racial bonuses use — see there
+ * for why they are derived rather than generated.
  *
  * **Seeded disabled.** `enabled` is the only toggle mechanism — there is no
  * condition vocabulary and no expression language, because the player is the
@@ -129,7 +159,7 @@ export function featureModifiers(features: readonly FeatureSource[]): Modifier[]
 
     const source = featureSource(feature.index);
     for (const effect of effects) {
-      const id = `${source}:${effect.target}`;
+      const id = modifierId(source, effect.target);
       if (taken.has(id)) {
         continue;
       }
@@ -169,13 +199,9 @@ export function featureModifiers(features: readonly FeatureSource[]): Modifier[]
  */
 export function syncFeatureModifiers(modifiers: readonly Modifier[], features: readonly FeatureSource[]): Modifier[] {
   const derived = featureModifiers(features);
-  const enabledBefore = new Map(
-    modifiers
-      .filter((modifier) => modifier.source.startsWith("feature:"))
-      .map((modifier) => [modifier.id, modifier.enabled]),
-  );
+  const enabledBefore = new Map(modifiers.filter(isFeatureRecord).map((modifier) => [modifier.id, modifier.enabled]));
 
-  const kept = modifiers.filter((modifier) => !modifier.source.startsWith("feature:"));
+  const kept = modifiers.filter((modifier) => !isFeatureRecord(modifier));
   const rederived = derived.map((modifier) => ({
     ...modifier,
     enabled: enabledBefore.get(modifier.id) ?? modifier.enabled,

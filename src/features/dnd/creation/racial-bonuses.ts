@@ -1,3 +1,4 @@
+import { modifierId } from "@/features/dnd/db/modifier-id";
 import { ABILITIES, type Abil, type Modifier, type Ref } from "@/features/dnd/db/schema";
 
 /**
@@ -61,16 +62,6 @@ export type RacialModifierInput = {
 
 function isAbil(value: unknown): value is Abil {
   return typeof value === "string" && (ABILITIES as readonly string[]).includes(value);
-}
-
-/**
- * Ids are derived from source and target rather than randomly generated, so
- * the same race produces the same records every time. A random id would make
- * every re-render look like a change to the modifier list and would make these
- * records untestable by equality.
- */
-function modifierId(source: string, target: string): string {
-  return `${source}:${target}`;
 }
 
 function bonusModifier(entry: RacialSource, abil: Abil, bonus: number): Modifier {

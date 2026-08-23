@@ -449,10 +449,11 @@ and it stays prose on the Features tab rather than having a target invented for 
 clearest absence — advantage on STR checks and resistance to three damage types are none of them a
 value `derive()` produces.
 
-Records attach **at creation** and are re-derived by `syncFeatureModifiers` whenever class,
-subclass or level moves — a **merge, not a replace**. The player's `enabled` flag survives, records
-for lost features go, and every non-`feature:` record is untouched, which is also what lets a
-homebrew record the player authored coexist with nothing special-cased for SRD.
+Records attach **at creation**. Class, subclass and level are not editable after creation today, so
+that is the only place they are written — but `syncFeatureModifiers` is a **merge, not a replace**,
+ready for the surface that will edit them: the player's `enabled` flag survives, records for lost
+features go, and every non-`feature:` record is untouched, which is also what lets a homebrew record
+the player authored coexist with nothing special-cased for SRD.
 
 **Seeded disabled.** Unarmored Defense is conditional on wearing no armor and Sheetcraft evaluates
 no conditions — the player does. Seeding it on would state an AC the character may not have; seeding
