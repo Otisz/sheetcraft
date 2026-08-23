@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isReference, isTarget, SKILLS } from "@/features/dnd/derive/targets";
+import { DERIVED_TARGETS, isReference, isTarget, SKILLS } from "@/features/dnd/derive/targets";
 
 describe("skills", () => {
   it("has the 18 SRD skills", () => {
@@ -81,5 +81,23 @@ describe("isReference", () => {
 
   it.each(["", "mod.luck", "score.", "MOD.CON", "ac", "maxHp", "mod", "hasOwnProperty"])("rejects %o", (ref) => {
     expect(isReference(ref)).toBe(false);
+  });
+});
+
+describe("DERIVED_TARGETS", () => {
+  it("lists every enumerable target once", () => {
+    // 8 scalars + 6 abilities + 6 saves + 18 skills.
+    expect(DERIVED_TARGETS).toHaveLength(38);
+    expect(new Set(DERIVED_TARGETS).size).toBe(DERIVED_TARGETS.length);
+  });
+
+  it("lists only targets the vocabulary accepts", () => {
+    for (const target of DERIVED_TARGETS) {
+      expect(isTarget(target)).toBe(true);
+    }
+  });
+
+  it("omits the attack family, whose keys come from the character's equipment", () => {
+    expect(DERIVED_TARGETS.some((target) => target.startsWith("attack."))).toBe(false);
   });
 });

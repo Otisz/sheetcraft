@@ -9,5 +9,5 @@ export { DEFAULT_HIT_DIE, DEFAULT_SPEED, EMPTY_CONTEXT } from "@/features/dnd/de
 export type { Attack, Derived, DerivedTarget, HitDice, SpellSlotPool } from "@/features/dnd/derive/derive";
 export { abilityModifier, derive, ModifierValidationError } from "@/features/dnd/derive/derive";
 export type { Step, Trace } from "@/features/dnd/derive/resolve";
-export type { Reference, Skill, Target } from "@/features/dnd/derive/targets";
-export { isReference, isTarget, SKILLS } from "@/features/dnd/derive/targets";
+export type { EnumerableTarget, Reference, Skill, Target } from "@/features/dnd/derive/targets";
+export { DERIVED_TARGETS, isReference, isTarget, SKILLS } from "@/features/dnd/derive/targets";

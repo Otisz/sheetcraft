@@ -29,7 +29,15 @@ import {
   type Weapon,
 } from "@/features/dnd/derive/context";
 import { type ResolvedModifier, resolve, type Trace } from "@/features/dnd/derive/resolve";
-import { isReference, isTarget, type Reference, SKILLS, type Skill, type Target } from "@/features/dnd/derive/targets";
+import {
+  type EnumerableTarget,
+  isReference,
+  isTarget,
+  type Reference,
+  SKILLS,
+  type Skill,
+  type Target,
+} from "@/features/dnd/derive/targets";
 
 /**
  * A modifier that names something the engine cannot address. Thrown rather
@@ -120,19 +128,12 @@ export type Derived = {
   explain(target: DerivedTarget): Trace;
 };
 
-/** Every target `explain` accounts for — which is every target the vocabulary has. */
-export type DerivedTarget =
-  | "proficiencyBonus"
-  | "maxHp"
-  | "ac"
-  | "initiative"
-  | "speed"
-  | "passivePerception"
-  | "spell.saveDc"
-  | "spell.attack"
-  | `ability.${Abil}`
-  | `save.${Abil}`
-  | `skill.${Skill}`;
+/**
+ * Every target `explain` accounts for — which is every target the vocabulary
+ * has, minus the `attack.*` family whose keys depend on what the character is
+ * carrying. An alias for `targets.ts`'s own name, not a second list.
+ */
+export type DerivedTarget = EnumerableTarget;
 
 /** PHB p.13: the modifier is `floor((score - 10) / 2)`, negatives included. */
 export function abilityModifier(score: number): number {
@@ -248,58 +249,76 @@ const MIN_MAX_HP = 1;
  */
 const MIN_SPEED = 0;
 
-export function derive(character: CharacterRecord, context: DeriveContext): Derived {
-  validate(character.modifiers);
+/**
+ * Everything the phases after abilities and proficiency read.
+ *
+ * The four fields travel together because every derivation past the first two
+ * phases needs all four: the modifiers to pick from, the scope to resolve a
+ * `{ref}` against, the ability modifiers each formula starts from, and the
+ * proficiency bonus. Passing the clump as one value is what lets AC, saves,
+ * skills and spellcasting be separate functions instead of blocks in a body.
+ *
+ * Constructing one *is* the phase boundary: it cannot exist until abilities and
+ * proficiency are settled, so no helper taking it can be called too early.
+ */
+type DerivePhase = {
+  modifiers: Modifier[];
+  scope: ReferenceScope;
+  abilityModifiers: Record<Abil, number>;
+  proficiencyBonus: number;
+};
 
-  const { modifiers, level } = character;
+/** The traces derived so far, keyed by the target each explains. */
+type TraceTable = Partial<Record<DerivedTarget, Trace>>;
 
-  // Ability scores resolve first and against an empty scope: they are what
-  // every reference is expressed in terms of, so letting a `{ref:'mod.con'}`
-  // reach an `ability.*` target would make resolution cyclic. A racial bonus
-  // or ASI is a plain number, which is all this restriction costs.
+/**
+ * Phase one: the ability scores, resolved against an empty scope.
+ *
+ * They are what every reference is expressed in terms of, so letting a
+ * `{ref:'mod.con'}` reach an `ability.*` target would make resolution cyclic.
+ * A racial bonus or ASI is a plain number, which is all this restriction costs.
+ */
+function deriveAbilities(
+  character: CharacterRecord,
+  traces: TraceTable,
+): { scores: Record<Abil, number>; abilityModifiers: Record<Abil, number> } {
   const emptyScope: ReferenceScope = {
-    level,
+    level: character.level,
     proficiencyBonus: 0,
     scores: blank(),
     modifiers: blank(),
   };
 
-  const scoreTraces = {} as Record<Abil, Trace>;
   const scores = {} as Record<Abil, number>;
   const abilityModifiers = {} as Record<Abil, number>;
   for (const abil of ABILITIES) {
-    const trace = resolve(character.abilities[abil], forTarget(modifiers, `ability.${abil}`, emptyScope));
-    scoreTraces[abil] = trace;
+    const trace = resolve(character.abilities[abil], forTarget(character.modifiers, `ability.${abil}`, emptyScope));
+    traces[`ability.${abil}`] = trace;
     scores[abil] = trace.value;
     abilityModifiers[abil] = abilityModifier(trace.value);
   }
 
-  const proficiencyScope: ReferenceScope = { level, proficiencyBonus: 0, scores, modifiers: abilityModifiers };
-  const proficiencyTrace = resolve(
-    baseProficiencyBonus(level),
-    forTarget(modifiers, "proficiencyBonus", proficiencyScope),
-  );
+  return { scores, abilityModifiers };
+}
 
-  // With abilities and proficiency settled, every reference can now resolve.
-  const scope: ReferenceScope = {
-    level,
-    proficiencyBonus: proficiencyTrace.value,
-    scores,
-    modifiers: abilityModifiers,
-  };
-
-  // Per-level rolls, not a stored total, so a CON change recomputes correctly.
-  // See CONTEXT.md § Hit point rolls.
-  const baseMaxHp = sum(character.hpRolls) + abilityModifiers.con * level;
-  const maxHpTrace = withFloor(
-    resolve(baseMaxHp, forTarget(modifiers, "maxHp", scope)),
+/** Max HP, from per-level rolls rather than a stored total. See CONTEXT.md § Hit point rolls. */
+function deriveMaxHp(character: CharacterRecord, phase: DerivePhase, traces: TraceTable): void {
+  const base = sum(character.hpRolls) + phase.abilityModifiers.con * character.level;
+  traces.maxHp = withFloor(
+    resolve(base, forTarget(phase.modifiers, "maxHp", phase.scope)),
     MIN_MAX_HP,
     "Hit points cannot drop below 1",
   );
+}
 
-  // Shields are partitioned out before the base formula, never into it: the
-  // Shield's `base: 2` is additive in the SRD. Each becomes a step, so the
-  // trace reads `base 16 → +2 shield` exactly as the sheet shows it.
+/**
+ * Armor class, from the equipped armor plus everything a feature contributes.
+ *
+ * Shields are partitioned out before the base formula, never into it: the
+ * Shield's `base: 2` is additive in the SRD. Each becomes a step, so the trace
+ * reads `base 16 → +2 shield` exactly as the sheet shows it.
+ */
+function deriveArmorClass(context: DeriveContext, phase: DerivePhase, traces: TraceTable): void {
   const bodyArmor = context.armor.find((piece) => !piece.isShield);
   const shields: ResolvedModifier[] = context.armor
     .filter((piece) => piece.isShield)
@@ -315,35 +334,47 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
       amount: piece.base,
     }));
 
-  const acTrace = resolve(baseArmorClass(bodyArmor, abilityModifiers.dex), [
+  traces.ac = resolve(baseArmorClass(bodyArmor, phase.abilityModifiers.dex), [
     ...shields,
-    ...forTarget(modifiers, "ac", scope),
+    ...forTarget(phase.modifiers, "ac", phase.scope),
   ]);
+}
 
+/**
+ * Initiative and walking speed — the two scalars that read straight off the
+ * context and the ability modifiers, with nothing in between.
+ */
+function deriveMovement(context: DeriveContext, phase: DerivePhase, traces: TraceTable): void {
   // A raw DEX check (PHB p.189) — no proficiency bonus. Reads the *derived*
   // modifier, so a racial bonus or an ASI has already moved it.
-  const initiativeTrace = resolve(abilityModifiers.dex, forTarget(modifiers, "initiative", scope));
+  traces.initiative = resolve(phase.abilityModifiers.dex, forTarget(phase.modifiers, "initiative", phase.scope));
 
   // The race's own `speed`, which is structural SRD data the caller resolved.
-  const speedTrace = withFloor(
-    resolve(context.speed ?? DEFAULT_SPEED, forTarget(modifiers, "speed", scope)),
+  traces.speed = withFloor(
+    resolve(context.speed ?? DEFAULT_SPEED, forTarget(phase.modifiers, "speed", phase.scope)),
     MIN_SPEED,
     "Speed cannot drop below 0",
   );
+}
 
-  const saveTraces = {} as Record<Abil, Trace>;
+/** Every saving throw, proficiency included. */
+function deriveSaves(character: CharacterRecord, phase: DerivePhase, traces: TraceTable): Record<Abil, number> {
   const saves = {} as Record<Abil, number>;
   for (const abil of ABILITIES) {
     // A proficient save adds the bonus to the base. It is not a modifier
     // record, so it is not a step — inventing one would put an entry in the
     // trace that nothing in the character's data corresponds to.
-    const base = abilityModifiers[abil] + (character.proficiencies.saves.includes(abil) ? proficiencyTrace.value : 0);
-    const trace = resolve(base, forTarget(modifiers, `save.${abil}`, scope));
-    saveTraces[abil] = trace;
+    const base =
+      phase.abilityModifiers[abil] + (character.proficiencies.saves.includes(abil) ? phase.proficiencyBonus : 0);
+    const trace = resolve(base, forTarget(phase.modifiers, `save.${abil}`, phase.scope));
+    traces[`save.${abil}`] = trace;
     saves[abil] = trace.value;
   }
+  return saves;
+}
 
-  const skillTraces = {} as Record<Skill, Trace>;
+/** Every skill check, proficiency and expertise included. */
+function deriveSkills(context: DeriveContext, phase: DerivePhase, traces: TraceTable): Record<Skill, number> {
   const skills = {} as Record<Skill, number>;
   for (const skill of Object.keys(SKILLS) as Skill[]) {
     // A character listed for expertise is proficient by definition, so
@@ -351,7 +382,7 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
     const expert = context.expertise.includes(skill);
     const proficient = expert || context.skillProficiencies.includes(skill);
 
-    const base = abilityModifiers[SKILLS[skill]] + (proficient ? proficiencyTrace.value : 0);
+    const base = phase.abilityModifiers[SKILLS[skill]] + (proficient ? phase.proficiencyBonus : 0);
 
     // Expertise doubles the proficiency bonus (PHB p.96) as a *second helping
     // of the same bonus* — an `add` of `{ref:'proficiencyBonus'}`, never a
@@ -366,49 +397,76 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
             op: "add",
             enabled: true,
             label: "Expertise",
-            amount: proficiencyTrace.value,
+            amount: phase.proficiencyBonus,
           },
         ]
       : [];
 
-    const trace = resolve(base, [...expertiseModifier, ...forTarget(modifiers, `skill.${skill}`, scope)]);
-    skillTraces[skill] = trace;
+    const trace = resolve(base, [...expertiseModifier, ...forTarget(phase.modifiers, `skill.${skill}`, phase.scope)]);
+    traces[`skill.${skill}`] = trace;
     skills[skill] = trace.value;
   }
+  return skills;
+}
 
-  // The passive score follows the perception check, so anything that moved the
-  // check has already moved this — `passivePerception` records land on top.
-  const passiveTrace = resolve(PASSIVE_BASE + skills.perception, forTarget(modifiers, "passivePerception", scope));
+/**
+ * The passive perception score, which follows the perception check — so
+ * anything that moved the check has already moved this, and
+ * `passivePerception` records land on top. PHB p.175.
+ */
+function derivePassivePerception(perception: number, phase: DerivePhase, traces: TraceTable): void {
+  traces.passivePerception = resolve(
+    PASSIVE_BASE + perception,
+    forTarget(phase.modifiers, "passivePerception", phase.scope),
+  );
+}
 
-  // A non-caster has no DC and no attack bonus. `null` rather than a number the
-  // sheet could not tell from a real one.
+/**
+ * The spell save DC and spell attack bonus, or nothing at all.
+ *
+ * A non-caster derives neither, so neither lands in the trace table — which is
+ * what makes `explain("spell.saveDc")` throw for them rather than report a
+ * number the sheet could not tell from a real one.
+ */
+function deriveSpellcasting(context: DeriveContext, phase: DerivePhase, traces: TraceTable): void {
   const spellAbility = context.spellcastingAbility;
-  const saveDcTrace = spellAbility
-    ? resolve(
-        SPELL_SAVE_DC_BASE + proficiencyTrace.value + abilityModifiers[spellAbility],
-        forTarget(modifiers, "spell.saveDc", scope),
-      )
-    : null;
-  const spellAttackTrace = spellAbility
-    ? resolve(proficiencyTrace.value + abilityModifiers[spellAbility], forTarget(modifiers, "spell.attack", scope))
-    : null;
+  if (!spellAbility) {
+    return;
+  }
 
-  // One die per level (PHB p.186). `remaining` floors at 0 rather than going
-  // negative: a level-down after spending dice would otherwise read "-1 left",
-  // and a pool cannot owe you dice.
-  const hitDiceTotal = level;
-  const hitDiceSpent = character.play.hitDiceSpent;
-  const hitDice: HitDice = {
+  traces["spell.saveDc"] = resolve(
+    SPELL_SAVE_DC_BASE + phase.proficiencyBonus + phase.abilityModifiers[spellAbility],
+    forTarget(phase.modifiers, "spell.saveDc", phase.scope),
+  );
+  traces["spell.attack"] = resolve(
+    phase.proficiencyBonus + phase.abilityModifiers[spellAbility],
+    forTarget(phase.modifiers, "spell.attack", phase.scope),
+  );
+}
+
+/**
+ * The hit dice pool. One die per level (PHB p.186). `remaining` floors at 0
+ * rather than going negative: a level-down after spending dice would otherwise
+ * read "-1 left", and a pool cannot owe you dice.
+ */
+function deriveHitDice(character: CharacterRecord, context: DeriveContext): HitDice {
+  const total = character.level;
+  const spent = character.play.hitDiceSpent;
+  return {
     die: context.hitDie ?? DEFAULT_HIT_DIE,
-    total: hitDiceTotal,
-    spent: hitDiceSpent,
-    remaining: Math.max(0, hitDiceTotal - hitDiceSpent),
+    total,
+    spent,
+    remaining: Math.max(0, total - spent),
   };
+}
 
-  // Only the levels the character genuinely has slots in. The SRD stores
-  // explicit zeroes for the rest, and a row reading "0 / 0" is noise on a
-  // phone. Ascending, because that is the order a caster reads them in.
-  const spellSlots: SpellSlotPool[] = SPELL_SLOT_LEVELS.flatMap((slotLevel) => {
+/**
+ * The slot pools, for the levels the character genuinely has slots in. The SRD
+ * stores explicit zeroes for the rest, and a row reading "0 / 0" is noise on a
+ * phone. Ascending, because that is the order a caster reads them in.
+ */
+function deriveSpellSlots(character: CharacterRecord, context: DeriveContext): SpellSlotPool[] {
+  return SPELL_SLOT_LEVELS.flatMap((slotLevel) => {
     const total = context.slotsByLevel?.[slotLevel] ?? 0;
     if (total <= 0) {
       return [];
@@ -417,18 +475,27 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
     const expended = character.play.slotsExpended[slotLevel];
     return [{ level: slotLevel, total, expended, remaining: Math.max(0, total - expended) }];
   });
+}
 
-  const attacks: Attack[] = (context.weapons ?? []).map((weapon) => {
-    const ability = attackAbility(weapon, abilityModifiers);
+/**
+ * One attack line per carried weapon.
+ *
+ * The `attack.*` traces are not in the trace table: their keys depend on what
+ * the character is carrying, so they are not part of the enumerable vocabulary
+ * `explain` answers for. The sheet renders the numbers, not their provenance.
+ */
+function deriveAttacks(context: DeriveContext, phase: DerivePhase): Attack[] {
+  return (context.weapons ?? []).map((weapon) => {
+    const ability = attackAbility(weapon, phase.abilityModifiers);
 
     // Proficiency applies to the attack roll and never to damage (PHB p.194) —
     // which is why the two resolutions start from different bases rather than
     // sharing one.
-    const hitBase = abilityModifiers[ability] + (weapon.proficient ? proficiencyTrace.value : 0);
-    const hitTrace = resolve(hitBase, forTarget(modifiers, `attack.${weapon.index}.hit`, scope));
+    const hitBase = phase.abilityModifiers[ability] + (weapon.proficient ? phase.proficiencyBonus : 0);
+    const hitTrace = resolve(hitBase, forTarget(phase.modifiers, `attack.${weapon.index}.hit`, phase.scope));
     const damageTrace = resolve(
-      abilityModifiers[ability],
-      forTarget(modifiers, `attack.${weapon.index}.damage`, scope),
+      phase.abilityModifiers[ability],
+      forTarget(phase.modifiers, `attack.${weapon.index}.damage`, phase.scope),
     );
 
     return {
@@ -441,58 +508,82 @@ export function derive(character: CharacterRecord, context: DeriveContext): Deri
       damageType: weapon.damageType,
     };
   });
+}
+
+export function derive(character: CharacterRecord, context: DeriveContext): Derived {
+  validate(character.modifiers);
+
+  const { modifiers, level } = character;
+
+  // Every trace lands here as it is derived, so `explain` is a lookup rather
+  // than a cascade that would have to re-encode the target taxonomy.
+  const traces: TraceTable = {};
+
+  // Phase one: abilities, against an empty scope.
+  const { scores, abilityModifiers } = deriveAbilities(character, traces);
+
+  // Phase two: proficiency, which may reference abilities but not itself.
+  const proficiencyScope: ReferenceScope = { level, proficiencyBonus: 0, scores, modifiers: abilityModifiers };
+  const proficiencyTrace = resolve(
+    baseProficiencyBonus(level),
+    forTarget(modifiers, "proficiencyBonus", proficiencyScope),
+  );
+  traces.proficiencyBonus = proficiencyTrace;
+
+  // Phase three: with abilities and proficiency settled, every reference can
+  // now resolve — so everything left derives against one full phase value.
+  const phase: DerivePhase = {
+    modifiers,
+    scope: { level, proficiencyBonus: proficiencyTrace.value, scores, modifiers: abilityModifiers },
+    abilityModifiers,
+    proficiencyBonus: proficiencyTrace.value,
+  };
+
+  deriveMaxHp(character, phase, traces);
+  deriveArmorClass(context, phase, traces);
+  deriveMovement(context, phase, traces);
+  const saves = deriveSaves(character, phase, traces);
+  const skills = deriveSkills(context, phase, traces);
+  // Passive perception is the one phase-three value with an intra-phase
+  // dependency: it reads the perception check, so it derives after the skills.
+  derivePassivePerception(skills.perception, phase, traces);
+  deriveSpellcasting(context, phase, traces);
+
+  const explain = (target: DerivedTarget): Trace => {
+    const trace = traces[target];
+    if (trace) {
+      return trace;
+    }
+
+    // The only targets a derivation leaves unfilled are the spellcasting pair,
+    // and only for a non-caster. Anything else missing is a bug in this
+    // engine, not a fact about the character, so it says so — a "no
+    // spellcasting ability" message for `skill.stealth` would send the reader
+    // looking in the wrong place.
+    if (target === "spell.saveDc" || target === "spell.attack") {
+      throw new Error(`Cannot explain ${target}: this character has no spellcasting ability`);
+    }
+    throw new Error(`Derivation did not produce a trace for ${target}`);
+  };
 
   return {
     abilityScores: scores,
     abilityModifiers,
     proficiencyBonus: proficiencyTrace.value,
-    maxHp: maxHpTrace.value,
-    armorClass: acTrace.value,
-    initiative: initiativeTrace.value,
-    speed: speedTrace.value,
+    maxHp: explain("maxHp").value,
+    armorClass: explain("ac").value,
+    initiative: explain("initiative").value,
+    speed: explain("speed").value,
     skills,
     saves,
-    passivePerception: passiveTrace.value,
-    spellSaveDc: saveDcTrace?.value ?? null,
-    spellAttackBonus: spellAttackTrace?.value ?? null,
-    hitDice,
-    spellSlots,
+    passivePerception: explain("passivePerception").value,
+    spellSaveDc: traces["spell.saveDc"]?.value ?? null,
+    spellAttackBonus: traces["spell.attack"]?.value ?? null,
+    hitDice: deriveHitDice(character, context),
+    spellSlots: deriveSpellSlots(character, context),
     cantripsKnown: context.cantripsKnown ?? 0,
-    attacks,
-    explain(target) {
-      if (target === "maxHp") {
-        return maxHpTrace;
-      }
-      if (target === "proficiencyBonus") {
-        return proficiencyTrace;
-      }
-      if (target === "ac") {
-        return acTrace;
-      }
-      if (target === "initiative") {
-        return initiativeTrace;
-      }
-      if (target === "speed") {
-        return speedTrace;
-      }
-      if (target === "passivePerception") {
-        return passiveTrace;
-      }
-      if (target === "spell.saveDc" || target === "spell.attack") {
-        const trace = target === "spell.saveDc" ? saveDcTrace : spellAttackTrace;
-        if (!trace) {
-          throw new Error(`Cannot explain ${target}: this character has no spellcasting ability`);
-        }
-        return trace;
-      }
-      if (target.startsWith("save.")) {
-        return saveTraces[target.slice("save.".length) as Abil];
-      }
-      if (target.startsWith("skill.")) {
-        return skillTraces[target.slice("skill.".length) as Skill];
-      }
-      return scoreTraces[target.slice("ability.".length) as Abil];
-    },
+    attacks: deriveAttacks(context, phase),
+    explain,
   };
 }
 

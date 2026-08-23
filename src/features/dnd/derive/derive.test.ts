@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EMPTY_CONTEXT } from "@/features/dnd/derive/context";
 import { derive } from "@/features/dnd/derive/derive";
 import { abilities, makeCharacter, makeModifier } from "@/features/dnd/derive/fixtures";
+import { DERIVED_TARGETS, type EnumerableTarget } from "@/features/dnd/derive/targets";
 
 describe("ability modifiers", () => {
   // PHB p.13, the full published table. Transcribed, not computed.
@@ -395,6 +396,30 @@ describe("validation", () => {
     });
 
     expect(() => derive(character, EMPTY_CONTEXT)).toThrow(/skill\.baking/);
+  });
+});
+
+describe("explain covers the vocabulary", () => {
+  // The one guard on the trace table: a target the vocabulary declares but the
+  // derivation forgets to fill would otherwise surface as a runtime throw on
+  // whichever sheet row asked for it.
+  const SPELLCASTING = ["spell.saveDc", "spell.attack"] as const satisfies readonly EnumerableTarget[];
+
+  const isSpellcasting = (target: EnumerableTarget): boolean =>
+    (SPELLCASTING as readonly EnumerableTarget[]).includes(target);
+
+  it.each(DERIVED_TARGETS.filter((target) => !isSpellcasting(target)))("explains %s for any character", (target) => {
+    expect(derive(makeCharacter(), EMPTY_CONTEXT).explain(target)).toMatchObject({ value: expect.any(Number) });
+  });
+
+  it.each(SPELLCASTING)("explains %s once the character has a spellcasting ability", (target) => {
+    const derived = derive(makeCharacter(), { ...EMPTY_CONTEXT, spellcastingAbility: "int" });
+
+    expect(derived.explain(target)).toMatchObject({ value: expect.any(Number) });
+  });
+
+  it.each(SPELLCASTING)("throws for %s on a non-caster", (target) => {
+    expect(() => derive(makeCharacter(), EMPTY_CONTEXT).explain(target)).toThrow(/no spellcasting ability/);
   });
 });
 

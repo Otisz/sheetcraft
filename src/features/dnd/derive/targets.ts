@@ -50,18 +50,42 @@ export const SCALAR_TARGETS = {
 export type ScalarTarget = keyof typeof SCALAR_TARGETS;
 
 /**
- * Every addressable target. The parameterised families — `ability.<abil>`,
- * `save.<abil>`, `skill.<skill>` — are enumerable and therefore enumerated;
- * `attack.<weaponId>.<hit|damage>` is not, because the weapon id comes from
- * the character's own equipment, so it is validated by shape instead.
+ * Every addressable target, as the union of its two halves. The split is by
+ * whether the keys are knowable up front: the parameterised families —
+ * `ability.<abil>`, `save.<abil>`, `skill.<skill>` — are enumerable and
+ * therefore enumerated; `attack.<weaponId>.<hit|damage>` is not, because the
+ * weapon id comes from the character's own equipment, so it is validated by
+ * shape instead.
+ *
+ * Composed from the halves rather than listed alongside them, so the two can
+ * never drift out of agreement.
  */
-export type Target =
-  | ScalarTarget
-  | `ability.${Abil}`
-  | `save.${Abil}`
-  | `skill.${Skill}`
-  | `attack.${string}.hit`
-  | `attack.${string}.damage`;
+export type Target = EnumerableTarget | AttackTarget;
+
+/**
+ * A target naming one weapon's attack or damage roll — the one family whose
+ * keys are not knowable without a character in hand, because the weapon id
+ * comes from their own equipment.
+ */
+export type AttackTarget = `attack.${string}.hit` | `attack.${string}.damage`;
+
+/**
+ * Every target whose keys *are* knowable up front. The enumerable half of the
+ * vocabulary, and the half `explain` answers for — see `DERIVED_TARGETS` for
+ * the same set as values.
+ */
+export type EnumerableTarget = ScalarTarget | `ability.${Abil}` | `save.${Abil}` | `skill.${Skill}`;
+
+/**
+ * Every `EnumerableTarget`, as values. Built from the same three declarations
+ * the type is built from, so a new skill or scalar target appears here without
+ * anyone remembering to add it.
+ */
+export const DERIVED_TARGETS: readonly EnumerableTarget[] = [
+  ...(Object.keys(SCALAR_TARGETS) as ScalarTarget[]),
+  ...ABILITIES.flatMap((abil) => [`ability.${abil}`, `save.${abil}`] as const),
+  ...(Object.keys(SKILLS) as Skill[]).map((skill) => `skill.${skill}` as const),
+];
 
 function isAbil(value: string): value is Abil {
   return (ABILITIES as readonly string[]).includes(value);
