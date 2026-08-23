@@ -92,3 +92,22 @@ export async function listCharacterSummaries(db: SheetcraftDb = getDb()): Promis
     updatedAt: character.updatedAt,
   }));
 }
+
+/**
+ * The most recent change across every character, or `null` for an empty list.
+ *
+ * What makes the stale-backup banner fire on a real edit rather than on every
+ * visit: an old backup of data that has not moved since is not a risk worth
+ * interrupting somebody over. Derived from `updatedAt` rather than tracked
+ * separately, because a second timestamp maintained by every writer is a second
+ * thing that can go stale — and this one already exists.
+ */
+export function lastChangeAt(characters: readonly { updatedAt: Date }[]): Date | null {
+  if (characters.length === 0) {
+    return null;
+  }
+  return characters.reduce(
+    (latest, character) => (character.updatedAt > latest ? character.updatedAt : latest),
+    characters[0].updatedAt,
+  );
+}
