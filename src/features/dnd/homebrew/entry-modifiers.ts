@@ -314,18 +314,29 @@ export function resyncCharacter(
  * once, and a per-type version would have to be called seven times by a caller
  * that then owns the ordering.
  *
- * `createCharacter` is its only caller, because nothing in the app changes a
- * character's refs after creation — `updateCharacter` is called only with
- * `play`, `modifiers` and `name`. A surface that made `equipment` or `spells`
- * editable would have to call this too, or a homebrew item acquired later
- * would contribute nothing until its entry was next saved. Same position
- * ADR-0004 records for feature records, and for the same reason.
+ * Called by `createCharacter` and by `updateCharacterRefs` — the two places a
+ * character's refs are set. ADR-0006 recorded the first as the only one,
+ * because nothing then changed a character's refs after creation; #176 built
+ * the surface that does, and wired it here rather than leaving a homebrew item
+ * acquired later contributing nothing until its entry was next saved. See
+ * ADR-0007.
+ *
+ * **Records whose entry is no longer referenced are swept**, which is what
+ * makes dropping an item the mirror of acquiring one. The per-entry merge
+ * cannot do it: `mergeModifiers` only drops records belonging to a source it
+ * is *given*, and a dropped item is precisely an entry this walk no longer
+ * visits. So its records would sit on the character forever — a number the
+ * sheet cannot explain, from an item the player is not carrying.
  */
 export async function syncAllEntryModifiers(
   character: CharacterRecord,
   db: SheetcraftDb = getDb(),
 ): Promise<Modifier[]> {
   let modifiers = character.modifiers;
+  // The sources this character's CURRENT refs justify. Anything under the
+  // `homebrew:` namespace outside this set belongs to an entry the character
+  // no longer references, and is swept below.
+  const live = new Set<string>();
 
   for (const type of HOMEBREW_TYPE_ORDER) {
     const indices = homebrewRefsOf(character, type);
@@ -341,9 +352,42 @@ export async function syncAllEntryModifiers(
       // number left on the sheet by an entry nobody can open is one nothing
       // can explain.
       const index = indices[position];
+      live.add(entryModifierSource(type, index));
       modifiers = syncEntryModifiers(modifiers, type, row ?? { index });
     }
   }
 
-  return modifiers;
+  // The sweep. Scoped to sources this mechanism actually OWNS — the
+  // `homebrew:<type>:<index>` grammar `entryModifierSource` writes — and to
+  // those no current ref justifies.
+  //
+  // The type segment is what makes the scope checkable, and it is load-bearing
+  // rather than decorative. A record may carry a `homebrew:` source without
+  // having come from an entry side-car at all: `createCharacter` accepts
+  // author-supplied records, and a two-segment `homebrew:azure-ward` is a
+  // record this walk did not write and must not delete. Matching the whole
+  // namespace would sweep it away on the character's first loadout change.
+  return modifiers.filter((one) => !isEntryAuthoredSource(one.source) || live.has(one.source));
+}
+
+/**
+ * Whether a source names an entry's side-car — `homebrew:<type>:<index>`, with
+ * a type segment from the closed set of authorable types.
+ *
+ * The check exists so the sweep can tell records it wrote from records that
+ * merely share the `homebrew:` prefix. Anything else under that namespace
+ * belongs to whoever put it there.
+ */
+function isEntryAuthoredSource(source: string): boolean {
+  if (!source.startsWith(HOMEBREW_NAMESPACE)) {
+    return false;
+  }
+
+  const rest = source.slice(HOMEBREW_NAMESPACE.length);
+  const separator = rest.indexOf(":");
+  if (separator === -1) {
+    return false;
+  }
+
+  return (HOMEBREW_TYPE_ORDER as readonly string[]).includes(rest.slice(0, separator));
 }

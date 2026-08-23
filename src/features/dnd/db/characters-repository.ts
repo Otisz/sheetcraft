@@ -7,6 +7,7 @@ import type { Abil, CharacterRecord, Modifier, Ref } from "@/features/dnd/db/sch
 import { ABILITIES } from "@/features/dnd/db/schema";
 import { derive, EMPTY_CONTEXT } from "@/features/dnd/derive";
 import { syncAllEntryModifiers } from "@/features/dnd/homebrew/entry-modifiers";
+import { HOMEBREW_TYPE_ORDER, tableFor } from "@/features/dnd/homebrew/types";
 
 /**
  * The repository seam over Dexie. Everything above it — routes, the sheet,
@@ -189,6 +190,97 @@ export async function updateCharacter(
     await db.dnd_characters.put(updated);
     return updated;
   });
+}
+
+/**
+ * The ref-bearing fields a loadout change writes — exactly the two CONTEXT.md
+ * § Loadout names, and no more.
+ *
+ * `modifiers` is deliberately NOT here. A toggle is not a ref change: it needs
+ * no re-sync, and routing it through this seam would re-derive every entry's
+ * records to write a boolean. `useUpdateModifiers` already owns that write.
+ * Widening this type to "fields the drawers might touch" would also cost the
+ * one guarantee it exists to give — that everything through here has moved a
+ * ref, so the sync it triggers is always warranted. See ADR-0007.
+ */
+export type LoadoutChanges = Partial<Pick<CharacterRecord, "equipment" | "spells">>;
+
+/**
+ * A loadout write: a patch, or a function of the stored record. See
+ * `updateCharacterRefs`, which explains why the second form exists.
+ */
+export type LoadoutWrite = LoadoutChanges | ((current: CharacterRecord) => LoadoutChanges);
+
+/**
+ * Applies a change to the fields that carry refs, and **re-syncs the modifier
+ * records the referenced homebrew entries author**.
+ *
+ * This exists rather than being a call to `updateCharacter` because the two
+ * halves must not come apart. ADR-0006 recorded exactly this trap: an entry's
+ * records are stored on the character rather than resolved on read, because
+ * `enabled` is player state and a list rebuilt every read has nowhere to keep
+ * it — so a homebrew item acquired after creation contributes nothing until
+ * its entry is next saved, unless something brings the records forward. A
+ * caller that had to remember a second call would eventually not.
+ *
+ * Both directions are covered by the one call, because `syncAllEntryModifiers`
+ * is a merge over the character's *current* refs rather than an append: an
+ * item dropped is an entry no longer walked, and `mergeModifiers` drops the
+ * records it no longer produces. So acquiring applies and dropping removes,
+ * with no separate removal path to keep in step.
+ *
+ * The sync and the write share **one transaction**, and the homebrew tables
+ * are in its scope because the sync reads them. A sync that committed and a
+ * write that then failed would leave a character carrying records for an item
+ * it does not have.
+ *
+ * Takes either a patch or a **function of the stored record**. The function
+ * form is what a surface with repeat taps wants: the drawers build a change
+ * from the `character` prop, which is only replaced once a mutation settles
+ * and its invalidation lands, so two quick taps on the quantity stepper both
+ * compute from the same stale snapshot and a patch would silently discard the
+ * first. The transaction has already read the current row, so handing it to
+ * the caller costs nothing and closes the window. A patch stays accepted
+ * because a single settled write is exactly that.
+ *
+ * Writes and restamps `updatedAt` **unconditionally**, which is deliberately
+ * unlike `resyncCharacter` — that returns `null` when nothing moved, so an
+ * entry edit touching only prose does not reorder the character list for a
+ * change nobody can see. The asymmetry is sound because the two are asked
+ * different questions: there, a re-sync may genuinely change nothing; here,
+ * the caller has just changed what the character carries. A loadout change
+ * that left `updatedAt` alone would be a change the character list could not
+ * show.
+ */
+export async function updateCharacterRefs(
+  id: string,
+  changes: LoadoutWrite,
+  db: SheetcraftDb = getDb(),
+): Promise<CharacterRecord | undefined> {
+  return db.transaction(
+    "rw",
+    [db.dnd_characters, ...HOMEBREW_TYPE_ORDER.map((type) => db.table(tableFor(type)))],
+    async () => {
+      const existing = await db.dnd_characters.get(id);
+      if (!existing) {
+        return undefined;
+      }
+
+      const patch = typeof changes === "function" ? changes(existing) : changes;
+      const changed: CharacterRecord = { ...existing, ...patch };
+
+      // Against the CHANGED record, not the stored one: the refs the sync walks
+      // are the ones this write is about to make true.
+      const updated: CharacterRecord = {
+        ...changed,
+        modifiers: await syncAllEntryModifiers(changed, db),
+        updatedAt: new Date(),
+      };
+
+      await db.dnd_characters.put(updated);
+      return updated;
+    },
+  );
 }
 
 /** Idempotent: deleting an id that is already gone is not an error. */

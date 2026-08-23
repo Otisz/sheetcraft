@@ -84,6 +84,19 @@ export type CharacterProficiencies = {
   languages: Ref[];
 };
 
+/**
+ * The two spell lists, named because three modules take one as a parameter and
+ * an inline repeat of the shape is a shape that drifts.
+ *
+ * `prepared` is **not a subset of `known`**: a cleric prepares from the whole
+ * class list, so a spell may be prepared without ever being known. Every reader
+ * unions the two rather than filtering. See CONTEXT.md § Loadout.
+ */
+export type CharacterSpells = {
+  known: Ref[];
+  prepared: Ref[];
+};
+
 export type CharacterEquipmentEntry = {
   itemRef: Ref;
   quantity: number;
@@ -119,7 +132,7 @@ export type CharacterRecord = {
   hpRolls: number[];
   proficiencies: CharacterProficiencies;
   equipment: CharacterEquipmentEntry[];
-  spells: { known: Ref[]; prepared: Ref[] };
+  spells: CharacterSpells;
   modifiers: Modifier[];
 
   play: PlayState;

@@ -69,6 +69,19 @@ describe("field coverage", () => {
     expect(definedComponents).toContain(home?.renderedBy);
   });
 
+  /**
+   * The two ref-bearing fields gained an EDIT surface in #176, and a map that
+   * recorded only where they are read would say the sheet is read-only about
+   * them — the same half-truth `renderedBy` was added to stop. Checked the same
+   * way, against components somebody actually wrote. See ADR-0007.
+   */
+  it.each(["equipment", "spells"])("%s names the component that edits it", (field) => {
+    const home = homeForField(field);
+
+    expect(home?.editedBy).toBeTruthy();
+    expect(definedComponents).toContain(home?.editedBy);
+  });
+
   it("claims no field the record does not have", () => {
     const actual = new Set([...recordFields, ...playFields, ...proficiencyFields]);
 

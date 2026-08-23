@@ -150,8 +150,9 @@ Parsed in exactly **one** place — `resolveRef(type, ref)`. Nothing else splits
 
 Homebrew **edits apply live** — a character references by id, so changing an entry recomputes every
 character using it. An entry's own modifier records are the one thing that cannot work that way,
-because `enabled` is stored player state: they are stored on the character and re-synced by
-`saveHomebrewEntry` on every edit, preserving the toggle. See ADR-0006. Edits show which characters are affected (informational, non-blocking); deletes
+because `enabled` is stored player state: they are stored on the character and re-synced on every
+edit by `saveHomebrewEntry`, and on every change of a character's own refs by
+`updateCharacterRefs` — preserving the toggle in both cases. See ADR-0006 and ADR-0007. Edits show which characters are affected (informational, non-blocking); deletes
 are **blocked** while referenced, so a homebrew ref never dangles. The asymmetry is deliberate: an
 edit changes a referent that still exists, a delete would strand the character.
 
@@ -326,6 +327,36 @@ every session. Declare the keys in ascending value (cp → pp): the sheet render
 
 Identified as a gap in the record during [the sheet prototype](https://github.com/Otisz/sheetcraft/issues/150) —
 it was absent from the schema entirely.
+
+## Loadout
+
+What a character carries and what spells they hold — `equipment` and `spells`, the two
+**ref-bearing, mutable** fields of the record.
+
+**Read on their tabs, changed behind the `⋯` menu.** The Inventory and Spells tabs render the list;
+`⋯` → Equipment and `⋯` → Spells are where it is edited. The split is not symmetry with
+[Override](#override) — it is `equipped`, which drives the `equip:` records armor AC is computed
+from. A switch that moves AC belongs off a screen used mid-combat, and `effects.ts` already refuses
+`equip:` a second switch on the grounds that "two ways to unequip a shield is one way too many".
+
+`equipped` is **character data**, not play state, and `toggleEquipped` is the only thing that moves
+it. Carrying is a quantity, so a second longsword raises a count rather than adding a second row —
+two rows for one ref would each carry their own `equipped` flag, and a shield both equipped and not
+is a contradiction derivation would resolve by counting the AC twice.
+
+`prepared` is **not a subset of `known`**: a cleric prepares from the whole class list, so a spell
+may be prepared without being known. Unpreparing does not forget it; forgetting is a separate
+action. No class-list filter and no known/prepared limits are enforced — the app does not derive
+those rules, and a limit it cannot adjudicate would refuse legal choices. Schema-valid is valid.
+
+Both fields have **one production write path**, `updateCharacterRefs`, which applies the change and
+re-syncs the modifier records the referenced homebrew entries author, in one transaction. A homebrew
+item's records therefore apply on acquisition and are swept on removal, rather than waiting for the
+entry's next save. See ADR-0007.
+
+**Starting equipment is not seeded.** The SRD ships `starting_equipment` and
+`starting_equipment_options` per class and background; creation uses neither, and the player adds
+everything by hand.
 
 ## Condition
 

@@ -85,8 +85,11 @@ export const CHARACTER_FIELD_HOMES = {
   // the tabs
   hpRolls: { tab: "combat", renderedBy: "HitPointRolls" },
   proficiencies: { tab: "bio", renderedBy: "Proficiencies" },
-  equipment: { tab: "inventory", renderedBy: "Items" },
-  spells: { tab: "spells", renderedBy: "SpellList" },
+  // Read on their tabs, edited behind the `⋯` menu. The split is the whole of
+  // ADR-0007: the tabs are where the record is consulted, and equipping armor
+  // moves AC, which is a number that must not shift under a mid-combat tap.
+  equipment: { tab: "inventory", renderedBy: "Items", editedBy: "EquipmentDrawer" },
+  spells: { tab: "spells", renderedBy: "SpellList", editedBy: "SpellsDrawer" },
   play: { tab: "header", renderedBy: "HpSection" },
 
   "proficiencies.skills": { tab: "skills", renderedBy: "SkillList" },
@@ -115,6 +118,17 @@ export const CHARACTER_FIELD_HOMES = {
  */
 export type FieldHome = {
   tab: SheetTabId | "header";
+  /**
+   * The component that **changes** it, for a field with an edit surface of its
+   * own. Absent on the fields that are edited where they are rendered — a
+   * stepper and the value it moves are one component — and on the ones with no
+   * edit surface yet.
+   *
+   * Named for `renderedBy`'s reason, and checked the same way. A field whose
+   * edit surface exists only in a docblock is one the map claims is editable
+   * and the player cannot reach. See ADR-0007.
+   */
+  editedBy?: string;
   /**
    * The component function that renders it. A name rather than a reference so
    * this module stays free of React and testable as pure data — the test

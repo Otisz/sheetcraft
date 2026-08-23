@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   loadClassOptions,
+  loadEquipmentOptions,
   loadRaceOptions,
+  loadSpellOptions,
   loadSubclassOptions,
   loadSubraceOptions,
   type PickerOption,
@@ -29,6 +31,8 @@ export const contentKeys = {
   races: () => [...contentKeys.all, "races"] as const,
   subclasses: (classRef: Ref | null) => [...contentKeys.all, "subclasses", classRef] as const,
   subraces: (raceRef: Ref | null) => [...contentKeys.all, "subraces", raceRef] as const,
+  equipment: () => [...contentKeys.all, "equipment"] as const,
+  spells: () => [...contentKeys.all, "spells"] as const,
 };
 
 export function useClassOptions() {
@@ -61,6 +65,32 @@ export function useSubraceOptions(raceRef: Ref | null) {
     queryKey: contentKeys.subraces(raceRef),
     queryFn: () => loadSubraceOptions(raceRef),
     enabled: raceRef !== null,
+    staleTime: FOREVER,
+  });
+}
+
+/**
+ * Every item, for the `⋯` → Equipment drawer's picker.
+ *
+ * Enabled only while the drawer is open: the equipment table is the largest in
+ * the catalog, and reading it on every sheet mount would put a table scan in
+ * front of a screen that does not need it. See ADR-0007.
+ */
+export function useEquipmentOptions(enabled: boolean) {
+  return useQuery<PickerOption[]>({
+    queryKey: contentKeys.equipment(),
+    queryFn: () => loadEquipmentOptions(),
+    enabled,
+    staleTime: FOREVER,
+  });
+}
+
+/** Every spell, for the `⋯` → Spells drawer's picker. Deferred for the same reason. */
+export function useSpellOptions(enabled: boolean) {
+  return useQuery<PickerOption[]>({
+    queryKey: contentKeys.spells(),
+    queryFn: () => loadSpellOptions(),
+    enabled,
     staleTime: FOREVER,
   });
 }

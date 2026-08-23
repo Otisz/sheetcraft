@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "@/features/dnd/characters/queries";
-import { updateCharacter } from "@/features/dnd/db/characters-repository";
+import type { LoadoutWrite } from "@/features/dnd/db/characters-repository";
+import { updateCharacter, updateCharacterRefs } from "@/features/dnd/db/characters-repository";
 import type { CharacterRecord, Modifier, PlayState } from "@/features/dnd/db/schema";
 import type { DeriveContext } from "@/features/dnd/derive";
 import { loadDeriveContext } from "@/features/dnd/play/sheet-context";
@@ -98,6 +99,33 @@ export function useUpdateModifiers() {
       void queryClient.invalidateQueries({ queryKey: playKeys.context(id) });
       // The tabs name what the character carries, so an equipment change moves
       // this too — a stale name outlives the item it named.
+      void queryClient.invalidateQueries({ queryKey: playKeys.tabData(id) });
+    },
+  });
+}
+
+/**
+ * Writes a loadout change — equipment, spells, or the toggle on a record an
+ * acquired homebrew entry authored.
+ *
+ * Separate from `useUpdateModifiers` because it goes through
+ * `updateCharacterRefs` rather than `updateCharacter`: both fields carry refs,
+ * so the write owes a re-sync of the records those refs' entries author, and
+ * the repository seam is where the two are welded together. A mutation that
+ * called the plain update would be exactly the trap ADR-0006 named. See
+ * ADR-0007.
+ *
+ * Invalidates the derive context and the tab data as well as the character:
+ * equipping armor moves AC, and an item just acquired needs its name resolved.
+ */
+export function useUpdateLoadout() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: string; changes: LoadoutWrite }) => updateCharacterRefs(id, changes),
+    onSuccess: (_result, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      void queryClient.invalidateQueries({ queryKey: playKeys.context(id) });
       void queryClient.invalidateQueries({ queryKey: playKeys.tabData(id) });
     },
   });

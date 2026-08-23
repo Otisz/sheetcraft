@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   loadClassOptions,
+  loadEquipmentOptions,
   loadRaceOptions,
+  loadSpellOptions,
   loadSubclassOptions,
   loadSubraceOptions,
 } from "@/features/dnd/content/options";
@@ -109,5 +111,33 @@ describe("loadRaceOptions", () => {
 
     const [dwarf] = await loadRaceOptions(db);
     expect(dwarf.entry.ability_bonuses).toEqual([{ ability_score: { index: "con" }, bonus: 2 }]);
+  });
+});
+
+describe("loadEquipmentOptions", () => {
+  it("offers SRD first, then homebrew — the same grouping every other picker uses", async () => {
+    await db.dnd_catalog_equipment.bulkPut([
+      { index: "shield", name: "Shield" },
+      { index: "longsword", name: "Longsword" },
+    ]);
+    await db.dnd_homebrew_equipment.put({ index: "aegis", name: "Aegis", updatedAt: new Date() });
+
+    const options = await loadEquipmentOptions(db);
+
+    expect(options.map((one) => one.ref)).toEqual(["catalog:longsword", "catalog:shield", "homebrew:aegis"]);
+  });
+});
+
+describe("loadSpellOptions", () => {
+  it("offers SRD first, then homebrew", async () => {
+    await db.dnd_catalog_spells.bulkPut([
+      { index: "shield", name: "Shield" },
+      { index: "magic-missile", name: "Magic Missile" },
+    ]);
+    await db.dnd_homebrew_spells.put({ index: "ward", name: "Ward", updatedAt: new Date() });
+
+    const options = await loadSpellOptions(db);
+
+    expect(options.map((one) => one.ref)).toEqual(["catalog:magic-missile", "catalog:shield", "homebrew:ward"]);
   });
 });

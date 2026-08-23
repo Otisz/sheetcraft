@@ -12,20 +12,29 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { ExportButton } from "@/features/dnd/backup";
+import type { LoadoutWrite } from "@/features/dnd/db/characters-repository";
 import { ABILITIES, type CharacterRecord, type Modifier, type Ref } from "@/features/dnd/db/schema";
 import type { Derived, DerivedTarget, EnumerableTarget } from "@/features/dnd/derive";
 import { derive } from "@/features/dnd/derive";
 import type { DeathSaves } from "@/features/dnd/play/death-saves";
 import { activeOverrides, clearOverride } from "@/features/dnd/play/effects";
 import { EffectsRow } from "@/features/dnd/play/effects-row";
+import { EquipmentMenuItem } from "@/features/dnd/play/equipment-drawer";
 import { signed } from "@/features/dnd/play/format";
 import type { HpPool } from "@/features/dnd/play/hp";
 import { HpSection } from "@/features/dnd/play/hp-row";
 import { overrideFor } from "@/features/dnd/play/overrides";
 import { OverridesMenuItem } from "@/features/dnd/play/overrides-drawer";
-import { useDeriveContext, useTabData, useUpdateModifiers, useUpdatePlay } from "@/features/dnd/play/queries";
+import {
+  useDeriveContext,
+  useTabData,
+  useUpdateLoadout,
+  useUpdateModifiers,
+  useUpdatePlay,
+} from "@/features/dnd/play/queries";
 import { describeCharacter } from "@/features/dnd/play/sections";
 import { SheetTabs } from "@/features/dnd/play/sheet-tabs";
+import { SpellsMenuItem } from "@/features/dnd/play/spells-drawer";
 import { cn, THUMB_ACTION } from "@/lib/utils";
 
 /**
@@ -45,6 +54,7 @@ export function CharacterSheet({ character }: { character: CharacterRecord }) {
   const context = useDeriveContext(character);
   const updatePlay = useUpdatePlay();
   const updateModifiers = useUpdateModifiers();
+  const updateLoadout = useUpdateLoadout();
 
   if (context.isPending) {
     return (
@@ -64,6 +74,7 @@ export function CharacterSheet({ character }: { character: CharacterRecord }) {
       derived={derive(character, context.data)}
       onPlayChange={updatePlay.mutate}
       onModifiersChange={updateModifiers.mutate}
+      onLoadoutChange={updateLoadout.mutate}
     />
   );
 }
@@ -73,11 +84,18 @@ function SheetBody({
   derived,
   onPlayChange,
   onModifiersChange,
+  onLoadoutChange,
 }: {
   character: CharacterRecord;
   derived: Derived;
   onPlayChange: (input: { id: string; play: CharacterRecord["play"] }) => void;
   onModifiersChange: (input: { id: string; modifiers: Modifier[] }) => void;
+  /**
+   * Writes equipment and spells. Separate from `onModifiersChange` because it
+   * goes through `updateCharacterRefs`, which re-syncs the records the
+   * referenced homebrew entries author. See ADR-0007.
+   */
+  onLoadoutChange: (input: { id: string; changes: LoadoutWrite }) => void;
 }) {
   const overrides = activeOverrides(character);
   // Queried once here and handed down, so the header's class/race line and the
@@ -97,6 +115,7 @@ function SheetBody({
         derived={derived}
         names={names}
         onModifiersChange={(modifiers) => onModifiersChange({ id: character.id, modifiers })}
+        onLoadoutChange={(changes) => onLoadoutChange({ id: character.id, changes })}
       />
 
       <HpSection
@@ -157,11 +176,13 @@ function Identity({
   derived,
   names,
   onModifiersChange,
+  onLoadoutChange,
 }: {
   character: CharacterRecord;
   derived: Derived;
   names: Partial<Record<string, string>>;
   onModifiersChange: (modifiers: Modifier[]) => void;
+  onLoadoutChange: (changes: LoadoutWrite) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -193,33 +214,39 @@ function Identity({
 
       <CharacterMenu
         character={character}
+        names={names}
         derived={derived}
         open={menuOpen}
         onOpenChange={setMenuOpen}
         onModifiersChange={onModifiersChange}
+        onLoadoutChange={onLoadoutChange}
       />
     </header>
   );
 }
 
 /**
- * Export · Edit · Duplicate · Delete. Export is live; the other three belong to
- * later tickets. The menu ships regardless because it is the *mechanism* that
+ * Export · Overrides · Equipment · Spells · Edit · Duplicate · Delete. The
+ * last three belong to later tickets. The menu ships regardless because it is the *mechanism* that
  * keeps character data off the play surface, and a play screen with no door to
  * editing is not the design.
  */
 function CharacterMenu({
   character,
+  names,
   derived,
   open,
   onOpenChange,
   onModifiersChange,
+  onLoadoutChange,
 }: {
   character: CharacterRecord;
+  names: Partial<Record<string, string>>;
   derived: Derived;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onModifiersChange: (modifiers: Modifier[]) => void;
+  onLoadoutChange: (changes: LoadoutWrite) => void;
 }) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
@@ -247,6 +274,23 @@ function CharacterMenu({
             overridden where it is shown. See ADR-0005.
           */}
           <OverridesMenuItem derived={derived} modifiers={character.modifiers} onModifiersChange={onModifiersChange} />
+          {/*
+            Equipment and spells — the two ref-bearing fields, and the reason
+            this menu is where they are changed rather than their own tabs.
+            Equipping moves AC, so the switch that does it belongs off the play
+            surface; the tabs stay the read-only place the record is consulted.
+            See ADR-0007.
+          */}
+          <EquipmentMenuItem
+            equipment={character.equipment}
+            names={names}
+            onEquipmentChange={(apply) => onLoadoutChange((current) => ({ equipment: apply(current.equipment) }))}
+          />
+          <SpellsMenuItem
+            spells={character.spells}
+            names={names}
+            onSpellsChange={(apply) => onLoadoutChange((current) => ({ spells: apply(current.spells) }))}
+          />
           {/*
             Disabled rather than absent: the menu is the answer to "where do I
             edit this?", and an empty drawer answers nothing. Each lands with

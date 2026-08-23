@@ -91,22 +91,39 @@ So the records are **stored on the character** and have to be brought forward de
 changed and it already scans for referencing characters to report the edit. The propagation reuses
 that scan rather than walking the table a second time — two walks are two answers that can differ.
 
-### The edit surface that does not exist yet
+### The edit surface — since shipped
 
-`syncAllEntryModifiers` runs in `createCharacter` and nowhere else, because **nothing in the app
-changes a character's refs after creation**. `updateCharacter`'s only production callers write
-`play`, `modifiers` (the player's toggle) and `name`; `equipment` and `spells` are ref-bearing and
-mutable in principle, but no surface mutates them today.
+**Superseded by [ADR-0007](0007-equipment-and-spell-editing.md).**
 
-This is deliberately the same position ADR-0004 records for feature records, and it has the same
-consequence: were a "change your equipment" surface to land without calling the sync, a homebrew
-item acquired after creation would contribute no records until its entry was next saved. Whichever
-ticket builds that surface owns wiring it up. Until then this paragraph describes a gap in a
-capability, not a behaviour the app exhibits.
+This section originally recorded that `syncAllEntryModifiers` ran in `createCharacter` and nowhere
+else, because nothing in the app changed a character's refs after creation, and named the trap that
+would land the moment something did: a homebrew item acquired after creation contributing no records
+until its entry was next saved.
 
-A character whose records did not actually move is **not written**. Restamping `updatedAt` on every
-referencing character for a prose fix would reorder the character list for a change none of them can
-see.
+[#176](https://github.com/Otisz/sheetcraft/issues/176) built that surface — the `⋯` → Equipment and
+`⋯` → Spells drawers — and closed the trap rather than inheriting it. The sync is **not** a second
+call the drawers make. `updateCharacterRefs` in the character repository applies the change and
+re-syncs in one transaction, and it is the only production write path for either field, so there is
+no caller that could forget.
+
+One thing that ticket found which this one did not anticipate: **removal did not follow from
+acquisition.** `mergeModifiers` drops only records belonging to a source it is given, and a dropped
+item is precisely an entry the walk no longer visits — so its records would have outlived it.
+`syncAllEntryModifiers` now sweeps entry-authored records no current ref justifies, scoped to the
+`homebrew:<type>:<index>` grammar rather than the bare `homebrew:` prefix. The distinction matters:
+a record may carry a `homebrew:` source without coming from a side-car, and sweeping the namespace
+would delete one. See ADR-0007.
+
+### Not writing a character whose records did not move
+
+This rule belongs to **entry-edit propagation**, above, rather than to the surface described in this
+section. A character whose records did not actually move is **not written**: restamping `updatedAt`
+on every referencing character for a prose fix would reorder the character list for a change none of
+them can see.
+
+`updateCharacterRefs` deliberately does not follow it, and the asymmetry is the point. There, a
+re-sync may genuinely change nothing; there, the caller has just changed what the character carries,
+so a write that left `updatedAt` alone would hide a real change from the character list.
 
 ## Provenance and the toggle
 

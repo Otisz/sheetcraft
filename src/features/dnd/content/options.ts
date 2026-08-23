@@ -91,3 +91,29 @@ export async function loadSubraceOptions(raceRef: Ref | null, db: SheetcraftDb =
     return owner === parent;
   });
 }
+
+/**
+ * Every item that can be carried.
+ *
+ * Unfiltered, unlike the two parent-scoped pickers above: any item can be
+ * acquired by any character, and a class's `starting_equipment` is a
+ * suggestion rather than a restriction. See ADR-0007.
+ */
+export function loadEquipmentOptions(db: SheetcraftDb = getDb()): Promise<PickerOption[]> {
+  return loadPair(db, "dnd_catalog_equipment", "dnd_homebrew_equipment");
+}
+
+/**
+ * Every spell.
+ *
+ * **Not filtered to the character's class list.** The app does not derive
+ * class spellcasting rules — which classes prepare rather than know, how many
+ * of each a level allows — so a filter here would be the app blocking a legal
+ * choice it cannot actually adjudicate: a subclass-granted spell, or a
+ * homebrew spell whose `classes` array is empty, would become unpickable.
+ * Schema-valid is valid; mechanical sanity is the table's business, the same
+ * line ADR-0006 draws for authored records. See ADR-0007.
+ */
+export function loadSpellOptions(db: SheetcraftDb = getDb()): Promise<PickerOption[]> {
+  return loadPair(db, "dnd_catalog_spells", "dnd_homebrew_spells");
+}
