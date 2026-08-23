@@ -10,7 +10,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import type { Modifier } from "@/features/dnd/db/schema";
-import type { Derived } from "@/features/dnd/derive";
+import type { Derived, EnumerableTarget } from "@/features/dnd/derive";
 import { targetLabel } from "@/features/dnd/play/effects";
 import { signed } from "@/features/dnd/play/format";
 import { OverrideCaption, overriddenBorder, useOverrideEditor } from "@/features/dnd/play/override-editor";
@@ -96,7 +96,7 @@ function OverrideRow({
   override,
   onOpen,
 }: {
-  target: string;
+  target: EnumerableTarget;
   derivedValue: number;
   override: Modifier | undefined;
   onOpen: () => void;

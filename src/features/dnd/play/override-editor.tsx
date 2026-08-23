@@ -11,6 +11,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import type { Modifier } from "@/features/dnd/db/schema";
+import type { EnumerableTarget } from "@/features/dnd/derive";
 import { clearOverride, targetLabel } from "@/features/dnd/play/effects";
 import { overrideFor, setOverride } from "@/features/dnd/play/overrides";
 import { cn, THUMB_ACTION, THUMB_CONTROL } from "@/lib/utils";
@@ -39,7 +40,7 @@ export function OverrideEditor({
   onSet,
   onClear,
 }: {
-  target: string;
+  target: EnumerableTarget;
   /** What derivation produces right now — the placeholder, and what clearing returns to. */
   derivedValue: number;
   override: Modifier | undefined;
@@ -159,7 +160,7 @@ function overrideValue(override: Modifier, derivedValue: number): number {
 }
 
 /** What a surface opens the editor with: the target, and what it derives to now. */
-export type OverrideTarget = { target: string; derivedValue: number };
+export type OverrideTarget = { target: EnumerableTarget; derivedValue: number };
 
 /** Opens the override editor on one value. */
 export type OverrideHandler = (editing: OverrideTarget) => void;

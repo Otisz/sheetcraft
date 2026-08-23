@@ -19,8 +19,15 @@
  * Pure — no React, no Dexie, like the rest of `play/`.
  */
 import { modifierId } from "@/features/dnd/db/modifier-id";
-import { ABILITIES, type Abil, type Modifier } from "@/features/dnd/db/schema";
-import { DERIVED_TARGETS, type Derived, type EnumerableTarget, isTarget, type Skill } from "@/features/dnd/derive";
+import type { Abil, Modifier } from "@/features/dnd/db/schema";
+import {
+  DERIVED_TARGETS,
+  type Derived,
+  type EnumerableTarget,
+  isTarget,
+  type ScalarTarget,
+  type Skill,
+} from "@/features/dnd/derive";
 import { targetLabel } from "@/features/dnd/play/effects";
 
 /** The provenance every override carries. The resolver keys off this exact string. */
@@ -50,44 +57,89 @@ export type OverrideSurface = (typeof OVERRIDE_SURFACES)[number];
 export const OVERRIDE_TARGETS: readonly EnumerableTarget[] = DERIVED_TARGETS;
 
 /**
- * The ten values that render only on the play header, and therefore have no tab
- * to be tapped on. Listed rather than derived, because "what the header renders"
- * is a fact about `character-sheet.tsx` that no data structure here can observe —
- * the partition test is what keeps the list honest.
+ * **The eight scalar targets: where each is offered, and how each is read.**
+ *
+ * One table rather than three, and that is the point. The surface map, the
+ * header-only list and the `derived`-field lookup each used to enumerate these
+ * eight separately, so adding a scalar target meant remembering three places —
+ * and the two that disagree silently are the surface (a value with no way to be
+ * set) and the reader (an editor that opens on `undefined`).
+ *
+ * `read` exists because **the target vocabulary and the derived field names are
+ * not the same spelling**: `ac` is `armorClass`, `spell.saveDc` is
+ * `spellSaveDc`. Keeping the two beside each other is what stops one being
+ * renamed without the other.
+ *
+ * The parameterised families — `ability.*`, `save.*`, `skill.*` — are absent on
+ * purpose. They are a *rule* (prefix → surface, prefix → record) rather than
+ * thirty entries, and listing them would be the restatement this table exists
+ * to remove.
  */
-const MENU_TARGETS = new Set<string>([
-  "ac",
-  "initiative",
-  "speed",
-  "proficiencyBonus",
-  ...ABILITIES.map((abil) => `ability.${abil}`),
-]);
+const SCALAR_TARGET_INFO: Record<ScalarTarget, { surface: OverrideSurface; read: (derived: Derived) => number }> = {
+  // The four the play header renders and nothing else does. They have no tab to
+  // be tapped on, so the `⋯` drawer is the only surface that can offer them.
+  ac: { surface: "menu", read: (derived) => derived.armorClass },
+  initiative: { surface: "menu", read: (derived) => derived.initiative },
+  speed: { surface: "menu", read: (derived) => derived.speed },
+  proficiencyBonus: { surface: "menu", read: (derived) => derived.proficiencyBonus },
 
-/** The tab each remaining scalar renders on. Saves and skills are handled by prefix. */
-const SCALAR_SURFACES: Record<string, OverrideSurface> = {
   // Beside the per-level rolls it is the sum of, on Combat — not the header HP
   // row, which is play state and stays a numpad.
-  maxHp: "combat",
-  passivePerception: "skills",
-  "spell.saveDc": "spells",
-  "spell.attack": "spells",
+  maxHp: { surface: "combat", read: (derived) => derived.maxHp },
+  passivePerception: { surface: "skills", read: (derived) => derived.passivePerception },
+
+  // `null` for a non-caster. An override still needs a number to start from,
+  // and 0 is what the sheet is currently claiming — which is nothing.
+  "spell.saveDc": { surface: "spells", read: (derived) => derived.spellSaveDc ?? 0 },
+  "spell.attack": { surface: "spells", read: (derived) => derived.spellAttackBonus ?? 0 },
 };
+
+/**
+ * The parameterised families: prefix → the surface that renders them, and how
+ * one is read off `derived`.
+ *
+ * `ability.*` reads the **score**, not the modifier: that is what the target
+ * addresses, and pre-filling the editor with the modifier would invite the
+ * player to overwrite a 16 with a 3.
+ */
+const FAMILY_INFO = {
+  // `ability.*` renders only on the play header's six-column grid — never on a
+  // tab — so it goes to the drawer, unlike the two families it shares a prefix
+  // rule with.
+  ability: { surface: "menu", read: (derived: Derived, key: string) => derived.abilityScores[key as Abil] },
+  save: { surface: "skills", read: (derived: Derived, key: string) => derived.saves[key as Abil] },
+  skill: { surface: "skills", read: (derived: Derived, key: string) => derived.skills[key as Skill] },
+} as const satisfies Record<string, { surface: OverrideSurface; read: (derived: Derived, key: string) => number }>;
+
+/** Splits `skill.stealth` into `["skill", "stealth"]`; `null` for an unparameterised target. */
+function splitTarget(target: string): [kind: string, key: string] | null {
+  const dot = target.indexOf(".");
+  return dot === -1 ? null : [target.slice(0, dot), target.slice(dot + 1)];
+}
 
 /**
  * Which surface offers a target, or `undefined` for something outside the
  * overridable vocabulary.
  *
+ * Takes a bare `string` deliberately: this is the validating boundary, called
+ * with stored and imported targets that have not been checked yet. Narrowing
+ * the parameter would defeat the check it exists to perform.
+ *
  * Total over `OVERRIDE_TARGETS` by construction, and the partition test in
  * `overrides.test.ts` is what proves it stays that way when a target is added.
  */
 export function overrideSurface(target: string): OverrideSurface | undefined {
-  if (MENU_TARGETS.has(target)) {
-    return "menu";
+  if (Object.hasOwn(SCALAR_TARGET_INFO, target)) {
+    return SCALAR_TARGET_INFO[target as ScalarTarget].surface;
   }
-  if (SCALAR_SURFACES[target]) {
-    return SCALAR_SURFACES[target];
+
+  const split = splitTarget(target);
+  if (!split) {
+    return undefined;
   }
-  return target.startsWith("save.") || target.startsWith("skill.") ? "skills" : undefined;
+
+  const [kind] = split;
+  return Object.hasOwn(FAMILY_INFO, kind) ? FAMILY_INFO[kind as keyof typeof FAMILY_INFO].surface : undefined;
 }
 
 /** Whether a stored string names something a player can override *and see*. */
@@ -137,53 +189,32 @@ export const HEADER_MARKER_RENDERERS = {
  * What a target currently derives to — the number the editor pre-fills, and
  * the one clearing returns the sheet to.
  *
- * Exists because **the target vocabulary and the derived field names are not
- * the same spelling**: `ac` is `armorClass`, `spell.saveDc` is `spellSaveDc`.
- * Every surface needs the translation, and a copy per surface is a copy that
- * gets one of the two mismatched pairs wrong.
+ * Reads the same two tables `overrideSurface` partitions on, so a target cannot
+ * have a surface without also having a reader. Before, this was a switch over
+ * the eight scalars plus its own `kind` cascade — a third enumeration of what
+ * those tables already said, and the copy most likely to be the one forgotten.
  *
- * An `ability.*` target reads the **score**, not the modifier: that is what the
- * target addresses, and pre-filling the editor with the modifier would invite
- * the player to overwrite a 16 with a 3.
+ * Takes an `EnumerableTarget` rather than a `string`: every caller reaches it
+ * from `targetsForSurface` or from a surface's own literal, all of which are
+ * already known-good. The throw below is the boundary for a target added to the
+ * vocabulary and forgotten here, not for user input.
  */
-export function derivedValueFor(derived: Derived, target: string): number {
-  switch (target) {
-    case "ac":
-      return derived.armorClass;
-    case "maxHp":
-      return derived.maxHp;
-    case "initiative":
-      return derived.initiative;
-    case "speed":
-      return derived.speed;
-    case "proficiencyBonus":
-      return derived.proficiencyBonus;
-    case "passivePerception":
-      return derived.passivePerception;
-    // `null` for a non-caster. An override still needs a number to start from,
-    // and 0 is what the sheet is currently claiming — which is nothing.
-    case "spell.saveDc":
-      return derived.spellSaveDc ?? 0;
-    case "spell.attack":
-      return derived.spellAttackBonus ?? 0;
-    default:
-      break;
+export function derivedValueFor(derived: Derived, target: EnumerableTarget): number {
+  if (Object.hasOwn(SCALAR_TARGET_INFO, target)) {
+    return SCALAR_TARGET_INFO[target as ScalarTarget].read(derived);
   }
 
-  const [kind, rest] = [target.slice(0, target.indexOf(".")), target.slice(target.indexOf(".") + 1)];
-  if (kind === "ability") {
-    return derived.abilityScores[rest as Abil];
-  }
-  if (kind === "save") {
-    return derived.saves[rest as Abil];
-  }
-  if (kind === "skill") {
-    return derived.skills[rest as Skill];
+  const split = splitTarget(target);
+  if (split && Object.hasOwn(FAMILY_INFO, split[0])) {
+    return FAMILY_INFO[split[0] as keyof typeof FAMILY_INFO].read(derived, split[1]);
   }
 
-  // Unreachable for an overridable target — the coverage test proves it — so a
-  // miss here is a target added to the vocabulary and forgotten about, not a
-  // number the sheet should invent.
+  // Unreachable through the type system — `EnumerableTarget` rejects
+  // `attack.*` and anything malformed at the call site — and unreachable for a
+  // valid target too, which the coverage test proves. Kept because the union is
+  // of string literals: a cast, or a value widened to `string` somewhere
+  // upstream, would still arrive here. A throw is the honest answer then; a
+  // number the sheet invented is not.
   throw new Error(`No derived value for ${target}`);
 }
 

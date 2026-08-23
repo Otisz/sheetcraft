@@ -130,6 +130,26 @@ the right answer here: offering *clear* on a family with no *create* would imply
 app does not have, while showing nothing at all is the silent hand-set number this ticket exists to
 prevent. Whether `attack.*` earns a real creation surface belongs to whichever ticket needs it.
 
+## One table, not three
+
+The eight scalar targets were originally enumerated three times: once for which surface offers them,
+once for the header-only subset, and once in a `switch` translating a target to its field on
+`Derived`. Adding a scalar meant remembering all three, and the two that fail silently are the
+surface (a value with no way to be set) and the reader (an editor that opens on `undefined`).
+
+They are now one entry each in `SCALAR_TARGET_INFO`, carrying `surface` and `read` together, with the
+parameterised families kept as a prefix rule in `FAMILY_INFO` rather than expanded to thirty rows.
+`overrideSurface` and `derivedValueFor` both read those tables, so a target cannot have a surface
+without also having a reader.
+
+This tightened the tests rather than loosening them: removing one scalar now fails six cases instead
+of three, because the surface and the reader are the same entry.
+
+`overrideSurface`, `isOverridable` and `setOverride` still take a bare `string` **on purpose** — they
+are the validating boundary, called with stored and imported targets that have not been checked.
+Everything downstream of them takes `EnumerableTarget`, which makes `attack.*` and malformed targets
+a compile error at the call site rather than a runtime throw.
+
 ## On testing UI-shaped things
 
 ADR-0002 excludes React components from the test surface, and the marker-coverage block in

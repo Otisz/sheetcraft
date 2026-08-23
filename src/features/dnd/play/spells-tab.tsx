@@ -1,7 +1,7 @@
 import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Modifier, SpellSlotLevel } from "@/features/dnd/db/schema";
-import type { Derived, SpellSlotPool } from "@/features/dnd/derive";
+import type { Derived, EnumerableTarget, SpellSlotPool } from "@/features/dnd/derive";
 import { nameFor, signed } from "@/features/dnd/play/format";
 import type { OverrideHandler } from "@/features/dnd/play/override-editor";
 import { OverrideMarker, overriddenBorder, useOverrideEditor } from "@/features/dnd/play/override-editor";
@@ -149,7 +149,7 @@ function Tile({
 }: {
   label: string;
   value: string;
-  target?: string;
+  target?: EnumerableTarget;
   derivedValue?: number;
   override?: Modifier;
   onOverride?: OverrideHandler;

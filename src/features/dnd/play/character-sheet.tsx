@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/drawer";
 import { ExportButton } from "@/features/dnd/backup";
 import { ABILITIES, type CharacterRecord, type Modifier, type Ref } from "@/features/dnd/db/schema";
-import type { Derived, DerivedTarget } from "@/features/dnd/derive";
+import type { Derived, DerivedTarget, EnumerableTarget } from "@/features/dnd/derive";
 import { derive } from "@/features/dnd/derive";
 import type { DeathSaves } from "@/features/dnd/play/death-saves";
 import { activeOverrides, clearOverride } from "@/features/dnd/play/effects";
@@ -276,7 +276,7 @@ function KeyStats({
 }: {
   derived: Derived;
   overrides: Map<string, Modifier>;
-  onClearOverride: (target: string) => void;
+  onClearOverride: (target: EnumerableTarget) => void;
 }) {
   const stats: { target: DerivedTarget; label: string; value: string }[] = [
     { target: "ac", label: "AC", value: String(derived.armorClass) },
@@ -351,7 +351,7 @@ function Abilities({
 }: {
   derived: Derived;
   modifiers: Modifier[];
-  onClearOverride: (target: string) => void;
+  onClearOverride: (target: EnumerableTarget) => void;
 }) {
   return (
     <section aria-label="Ability scores" className="grid grid-cols-6 gap-1.5">

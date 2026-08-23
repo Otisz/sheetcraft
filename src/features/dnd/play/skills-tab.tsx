@@ -1,6 +1,6 @@
 import { refIndex } from "@/features/dnd/db/resolve-ref";
 import { ABILITIES, type Abil, type CharacterRecord, type Modifier } from "@/features/dnd/db/schema";
-import type { Derived, Skill } from "@/features/dnd/derive";
+import type { Derived, EnumerableTarget, Skill } from "@/features/dnd/derive";
 import { SKILLS } from "@/features/dnd/derive";
 import { signed, titleCase } from "@/features/dnd/play/format";
 import type { OverrideHandler } from "@/features/dnd/play/override-editor";
@@ -196,7 +196,7 @@ function Row({
   suffix?: string;
   value: number;
   proficiencyLabel: string;
-  target: string;
+  target: EnumerableTarget;
   character: CharacterRecord;
   onOverride: OverrideHandler;
 }) {
